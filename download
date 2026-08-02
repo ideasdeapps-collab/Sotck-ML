@@ -1,0 +1,17 @@
+# Node / Next.js
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Python
+__pycache__/
+*.pyc
+
+# Entorno
+.env
+.env.local
+
+# NOTA: los artefactos (modelos + backtests) SÍ se versionan a propósito,
+# para que la API desplegada pueda cargarlos.
