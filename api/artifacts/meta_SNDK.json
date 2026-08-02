@@ -1,0 +1,31 @@
+{
+  "ticker": "SNDK",
+  "trained_at": "2026-08-02T07:34:47.916628Z",
+  "n_samples": 311,
+  "feature_cols": [
+    "sma_ratio_5",
+    "sma_ratio_10",
+    "sma_ratio_20",
+    "sma_ratio_50",
+    "vol_10",
+    "vol_20",
+    "rsi_14",
+    "macd",
+    "macd_signal",
+    "momentum_10",
+    "vol_change",
+    "ret_lag_1",
+    "ret_lag_2",
+    "ret_lag_3",
+    "ret_lag_5"
+  ],
+  "last_close": 1214.83,
+  "last_date": "2026-07-31",
+  "mu_daily": 0.011628705922977557,
+  "sigma_daily": 0.06543342386411008,
+  "metrics": {
+    "mae": 0.07268494851247022,
+    "r2": -0.11951712106137524,
+    "directional_accuracy": 0.4444444444444444
+  }
+}

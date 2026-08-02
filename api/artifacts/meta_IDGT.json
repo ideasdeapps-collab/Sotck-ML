@@ -1,0 +1,31 @@
+{
+  "ticker": "IDGT",
+  "trained_at": "2026-08-02T07:38:01.631556Z",
+  "n_samples": 450,
+  "feature_cols": [
+    "sma_ratio_5",
+    "sma_ratio_10",
+    "sma_ratio_20",
+    "sma_ratio_50",
+    "vol_10",
+    "vol_20",
+    "rsi_14",
+    "macd",
+    "macd_signal",
+    "momentum_10",
+    "vol_change",
+    "ret_lag_1",
+    "ret_lag_2",
+    "ret_lag_3",
+    "ret_lag_5"
+  ],
+  "last_close": 113.0889,
+  "last_date": "2026-07-31",
+  "mu_daily": 0.0008057891961478421,
+  "sigma_daily": 0.014254360801967533,
+  "metrics": {
+    "mae": 0.014089247652219668,
+    "r2": -0.09764469056269376,
+    "directional_accuracy": 0.5444444444444444
+  }
+}

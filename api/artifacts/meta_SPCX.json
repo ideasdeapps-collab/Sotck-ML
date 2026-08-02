@@ -1,0 +1,31 @@
+{
+  "ticker": "SPCX",
+  "trained_at": "2026-08-02T07:36:15.756219Z",
+  "n_samples": 402,
+  "feature_cols": [
+    "sma_ratio_5",
+    "sma_ratio_10",
+    "sma_ratio_20",
+    "sma_ratio_50",
+    "vol_10",
+    "vol_20",
+    "rsi_14",
+    "macd",
+    "macd_signal",
+    "momentum_10",
+    "vol_change",
+    "ret_lag_1",
+    "ret_lag_2",
+    "ret_lag_3",
+    "ret_lag_5"
+  ],
+  "last_close": 108.37,
+  "last_date": "2026-07-31",
+  "mu_daily": 0.0038676814550933146,
+  "sigma_daily": 0.10108697335995455,
+  "metrics": {
+    "mae": 0.042707870096230414,
+    "r2": -0.007842934402355395,
+    "directional_accuracy": 0.5061728395061729
+  }
+}

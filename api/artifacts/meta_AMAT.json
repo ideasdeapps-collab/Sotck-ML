@@ -1,0 +1,31 @@
+{
+  "ticker": "AMAT",
+  "trained_at": "2026-08-02T07:34:57.584212Z",
+  "n_samples": 450,
+  "feature_cols": [
+    "sma_ratio_5",
+    "sma_ratio_10",
+    "sma_ratio_20",
+    "sma_ratio_50",
+    "vol_10",
+    "vol_20",
+    "rsi_14",
+    "macd",
+    "macd_signal",
+    "momentum_10",
+    "vol_change",
+    "ret_lag_1",
+    "ret_lag_2",
+    "ret_lag_3",
+    "ret_lag_5"
+  ],
+  "last_close": 507.67,
+  "last_date": "2026-07-31",
+  "mu_daily": 0.002000484335963059,
+  "sigma_daily": 0.03395842306483714,
+  "metrics": {
+    "mae": 0.037025636815278734,
+    "r2": 0.04774177327576834,
+    "directional_accuracy": 0.5111111111111111
+  }
+}
