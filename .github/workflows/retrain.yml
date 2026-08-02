@@ -11,8 +11,9 @@ on:
         default: ""
 
 env:
-  # Lista completa solicitada por el usuario
+  # Plan gratuito Polygon = 2 años de histórico -> usa 2, no 5.
   DEFAULT_TICKERS: "SNDK SMH AMAT TSM QQQ NVDA MU XLI AVGO SPCX KOID BOTZ IGV ASML META SKHY SOXX IDGT"
+  YEARS: "2"
 
 jobs:
   retrain:
@@ -27,46 +28,61 @@ jobs:
       - name: Install dependencies
         run: pip install -r api/requirements.txt
 
+      # 1) Falla temprano y claro si el secret no está configurado.
+      - name: Check POLYGON_API_KEY
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+        run: |
+          if [ -z "$POLYGON_API_KEY" ]; then
+            echo "::error::POLYGON_API_KEY no está configurado en Settings → Secrets → Actions."
+            exit 1
+          fi
+          echo "POLYGON_API_KEY presente (len=${#POLYGON_API_KEY})."
+
+      # 2) Entrena. NO ocultamos el error: si un ticker falla, lo registramos
+      #    pero seguimos; al final validamos que exista al menos 1 modelo.
       - name: Train + backtest
         env:
           POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
         run: |
           TICKERS="${{ github.event.inputs.tickers }}"
           if [ -z "$TICKERS" ]; then TICKERS="$DEFAULT_TICKERS"; fi
+          mkdir -p api/artifacts
+          FAILED=""
           for T in $TICKERS; do
-            echo "=== $T: entrenando ==="
-            python training/train_xgb.py --ticker "$T" --years 5 || echo "!! fallo train $T"
-            echo "=== $T: backtest ==="
-            python training/backtest.py --ticker "$T" --years 5 --test-days 120 || echo "!! fallo backtest $T"
+            echo "::group::Entrenando $T"
+            if python training/train_xgb.py --ticker "$T" --years "$YEARS"; then
+              python training/backtest.py --ticker "$T" --years "$YEARS" --test-days 120 \
+                || echo "::warning::backtest falló para $T"
+            else
+              echo "::warning::train falló para $T"
+              FAILED="$FAILED $T"
+            fi
+            echo "::endgroup::"
           done
+          echo "Tickers con fallo:$FAILED"
 
+      # 3) Verifica que haya artefactos ANTES de commitear (evita el error 128).
+      - name: Verify artifacts exist
+        run: |
+          COUNT=$(ls api/artifacts/*.joblib 2>/dev/null | wc -l)
+          echo "Modelos generados: $COUNT"
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::No se generó ningún modelo. Revisa el log de 'Train + backtest' (API key, rate-limit o datos)."
+            exit 1
+          fi
+
+      # 4) Commit resiliente: solo agrega lo que exista, y no falla si no hay cambios.
       - name: Commit artifacts
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add api/artifacts/*.joblib api/artifacts/*.json
-          git commit -m "chore: retrain + backtest [skip ci]" || echo "Sin cambios"
-          git push
-
-  # Job separado: guardar un forecast fresco en Supabase para el histórico.
-  # Requiere que la API esté desplegada y accesible (ML_API_URL).
-  snapshot-forecasts:
-    needs: retrain
-    runs-on: ubuntu-latest
-    if: ${{ vars.ML_API_URL != '' }}
-    steps:
-      - name: Snapshot forecasts to Supabase
-        run: |
-          TICKERS="${{ github.event.inputs.tickers }}"
-          if [ -z "$TICKERS" ]; then TICKERS="$DEFAULT_TICKERS"; fi
-          for T in $TICKERS; do
-            echo "Snapshot $T"
-            curl -s -X POST "${{ vars.ML_API_URL }}/forecast" \
-              -H "Content-Type: application/json" \
-              -d "{\"ticker\":\"$T\",\"horizon\":30,\"n_sims\":10000,\"save\":true}" \
-              -o /dev/null -w "  status: %{http_code}\n" || true
-            # Rellenar precios reales de días ya ocurridos
-            curl -s -X POST "${{ vars.ML_API_URL }}/backfill-actuals?ticker=$T&days=60" \
-              -o /dev/null -w "  backfill: %{http_code}\n" || true
-            sleep 13   # respeta el límite de 5 llamadas/min del plan gratuito
-          done
+          # Usa find en vez de glob para no romper si algún patrón no matchea.
+          find api/artifacts -type f \( -name '*.joblib' -o -name '*.json' \) -print0 \
+            | xargs -0 git add
+          if git diff --cached --quiet; then
+            echo "Sin cambios que commitear."
+          else
+            git commit -m "chore: retrain + backtest [skip ci]"
+            git push
+          fi
