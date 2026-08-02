@@ -1,0 +1,37 @@
+# render.yaml — Despliegue de la API de ML (FastAPI + XGBoost) en Render
+# ======================================================================
+# La API pesada NO va en Vercel; va aquí, en un servicio "always-on".
+# Render construye desde el Dockerfile existente (api/Dockerfile).
+#
+# Pasos:
+#   1. Sube el repo a GitHub.
+#   2. En Render: New → Blueprint → selecciona este repo (detecta render.yaml).
+#   3. Rellena las variables marcadas 'sync: false' en el dashboard.
+#   4. Copia la URL pública (https://stock-ml-api.onrender.com) y ponla en
+#      Vercel como NEXT_PUBLIC_ML_API_URL.
+
+services:
+  - type: web
+    name: stock-ml-api
+    runtime: docker
+    dockerfilePath: ./api/Dockerfile
+    dockerContext: .            # contexto = raíz del repo (copia api/ + training/)
+    plan: free                  # el free tier duerme tras 15 min de inactividad
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: POLYGON_API_KEY
+        sync: false             # se pega en el dashboard (secreto)
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: https://tu-app.vercel.app,http://localhost:3000
+      - key: POLYGON_MAX_CALLS_PER_MIN
+        value: "5"              # plan gratuito Polygon
+      - key: TTL_INTRADAY
+        value: "900"
+      - key: TTL_DAILY
+        value: "3600"
