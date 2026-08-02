@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.env
+.env.local
+node_modules/
+
+# NOTA: los artefactos (modelos + backtests) SÍ se versionan a propósito,
+# para que la API desplegada pueda cargarlos. El workflow los comitea.
+# Si prefieres guardarlos en Supabase Storage en lugar del repo, descomenta:
+# api/artifacts/*.joblib
+# api/artifacts/*.json
