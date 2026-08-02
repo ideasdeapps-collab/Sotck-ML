@@ -1,0 +1,72 @@
+name: Retrain XGBoost models
+
+# Reentrena los modelos, corre backtest y guarda forecasts en Supabase.
+on:
+  schedule:
+    - cron: "0 11 * * 1-5"       # lunes a viernes 11:00 UTC (~05:00 Morelia)
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: "Tickers separados por espacio (vacío = lista completa)"
+        default: ""
+
+env:
+  # Lista completa solicitada por el usuario
+  DEFAULT_TICKERS: "SNDK SMH AMAT TSM QQQ NVDA MU XLI AVGO SPCX KOID BOTZ IGV ASML META SKHY SOXX IDGT"
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r api/requirements.txt
+
+      - name: Train + backtest
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+        run: |
+          TICKERS="${{ github.event.inputs.tickers }}"
+          if [ -z "$TICKERS" ]; then TICKERS="$DEFAULT_TICKERS"; fi
+          for T in $TICKERS; do
+            echo "=== $T: entrenando ==="
+            python training/train_xgb.py --ticker "$T" --years 5 || echo "!! fallo train $T"
+            echo "=== $T: backtest ==="
+            python training/backtest.py --ticker "$T" --years 5 --test-days 120 || echo "!! fallo backtest $T"
+          done
+
+      - name: Commit artifacts
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add api/artifacts/*.joblib api/artifacts/*.json
+          git commit -m "chore: retrain + backtest [skip ci]" || echo "Sin cambios"
+          git push
+
+  # Job separado: guardar un forecast fresco en Supabase para el histórico.
+  # Requiere que la API esté desplegada y accesible (ML_API_URL).
+  snapshot-forecasts:
+    needs: retrain
+    runs-on: ubuntu-latest
+    if: ${{ vars.ML_API_URL != '' }}
+    steps:
+      - name: Snapshot forecasts to Supabase
+        run: |
+          TICKERS="${{ github.event.inputs.tickers }}"
+          if [ -z "$TICKERS" ]; then TICKERS="$DEFAULT_TICKERS"; fi
+          for T in $TICKERS; do
+            echo "Snapshot $T"
+            curl -s -X POST "${{ vars.ML_API_URL }}/forecast" \
+              -H "Content-Type: application/json" \
+              -d "{\"ticker\":\"$T\",\"horizon\":30,\"n_sims\":10000,\"save\":true}" \
+              -o /dev/null -w "  status: %{http_code}\n" || true
+            # Rellenar precios reales de días ya ocurridos
+            curl -s -X POST "${{ vars.ML_API_URL }}/backfill-actuals?ticker=$T&days=60" \
+              -o /dev/null -w "  backfill: %{http_code}\n" || true
+            sleep 13   # respeta el límite de 5 llamadas/min del plan gratuito
+          done
