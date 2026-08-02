@@ -1,31 +1,33 @@
 "use client";
 
 /**
- * SignalsTab.tsx — TERCERA PESTAÑA: Señales combinadas
- * ====================================================
- * Cruza la predicción diaria de XGBoost con la estructura intradía y dibuja:
- *   - VEREDICTO (STRONG BUY … STRONG SELL) con score de confluencia
- *   - Panel de sesgo diario (XGBoost) + estructura intradía (VWAP, tendencia)
- *   - CURVA DE SEÑAL (score por vela, área verde/roja) con marcadores de alertas
- *   - Tabla de alertas de alta confianza (diario × intradía alineados)
+ * SignalsTab.tsx — Señales combinadas (XGBoost diario × estructura intradía)
+ * ==========================================================================
+ * ✅ FIX eje X: la curva de señal ahora muestra la HORA en el eje X y la
+ *    FECHA DE EVALUACIÓN en el encabezado.
  *
- * Plan GRATUITO de Polygon: datos con ~15 min de retraso.
- *   -> Intervalo por defecto 15 min y auto-refresh MÍNIMO de 15 min.
- *   -> No tiene sentido (ni se permite) consultar más rápido.
- *
+ * Fuente: GET /signals?ticker=NVDA&interval=15&days=2
  * Env: NEXT_PUBLIC_ML_API_URL
  */
 
 import { useEffect, useRef, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_ML_API_URL || "http://localhost:8000";
-const MIN_REFRESH_MIN = 15; // límite del plan gratuito (dato diferido 15 min)
+const MIN_REFRESH_MIN = 15;
 
 const VERDICT_COLOR: Record<string, string> = {
-  "STRONG BUY": "#0b6b3a", "BUY": "#1e824c",
-  "NEUTRAL": "#7f8c8d",
+  "STRONG BUY": "#0b6b3a", "BUY": "#1e824c", "NEUTRAL": "#7f8c8d",
   "SELL": "#c0392b", "STRONG SELL": "#7b241c",
 };
+
+function hm(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+function fecha(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
+}
 
 export default function SignalsTab() {
   const [ticker, setTicker] = useState("NVDA");
@@ -40,30 +42,22 @@ export default function SignalsTab() {
   async function run() {
     setLoading(true); setError(null);
     try {
-      const res = await fetch(
-        `${API_URL}/signals?ticker=${ticker}&interval=${interval}&days=2`);
+      const res = await fetch(`${API_URL}/signals?ticker=${ticker}&interval=${interval}&days=2`);
       if (!res.ok) throw new Error((await res.json()).detail || "Error API");
       setData(await res.json());
       setLastUpdated(new Date().toLocaleTimeString());
-    } catch (e: any) {
-      setError(e.message); setData(null);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e: any) { setError(e.message); setData(null); }
+    finally { setLoading(false); }
   }
 
-  // Auto-refresh respetando el mínimo de 15 min del plan gratuito
   useEffect(() => {
     if (timer.current) clearInterval(timer.current);
-    if (autoRefresh) {
-      timer.current = setInterval(run, MIN_REFRESH_MIN * 60 * 1000);
-    }
+    if (autoRefresh) timer.current = setInterval(run, MIN_REFRESH_MIN * 60 * 1000);
     return () => timer.current && clearInterval(timer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRefresh, ticker, interval]);
 
-  // ---- Curva de señal en SVG ----
-  const W = 940, H = 240, padL = 40, padR = 20, padT = 16, padB = 24;
+  const W = 940, H = 260, padL = 40, padR = 20, padT = 16, padB = 40;
   const plotW = W - padL - padR, plotH = H - padT - padB;
 
   function renderCurve() {
@@ -80,7 +74,6 @@ export default function SignalsTab() {
     const tindex: Record<string, number> = {};
     curve.forEach((c, i) => (tindex[c.time] = i));
 
-    // Área positiva (verde) y negativa (roja) respecto a la línea cero
     const areaPath = (positive: boolean) => {
       let d = `M ${x(0)} ${zeroY}`;
       curve.forEach((c, i) => {
@@ -90,22 +83,30 @@ export default function SignalsTab() {
       d += ` L ${x(curve.length - 1)} ${zeroY} Z`;
       return d;
     };
-    const linePath = curve
-      .map((c, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(c.score_ema)}`)
-      .join(" ");
+    const linePath = curve.map((c, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(c.score_ema)}`).join(" ");
+
+    // Ticks de HORA en X (7 etiquetas)
+    const xticks = Array.from({ length: 7 }).map((_, k) => {
+      const i = Math.round((curve.length - 1) * (k / 6));
+      return { i, time: curve[i].time };
+    });
 
     return (
       <svg width="100%" viewBox={`0 0 ${W} ${H}`}
            style={{ background: "#fff", border: "1px solid #eee", borderRadius: 8 }}>
-        {/* Línea cero */}
         <line x1={padL} x2={W - padR} y1={zeroY} y2={zeroY} stroke="#ccc" strokeDasharray="4 3" />
         <text x={padL - 6} y={zeroY + 3} fontSize={9} fill="#999" textAnchor="end">0</text>
-        {/* Áreas */}
         <path d={areaPath(true)} fill="#1e824c" fillOpacity={0.15} />
         <path d={areaPath(false)} fill="#c0392b" fillOpacity={0.15} />
-        {/* Línea de score (EMA) */}
         <path d={linePath} fill="none" stroke="#2c3e50" strokeWidth={1.8} />
-        {/* Marcadores de alertas */}
+
+        {/* Eje X con HORA (✅ el fix) */}
+        {xticks.map((t, k) => (
+          <text key={k} x={x(t.i)} y={H - padB + 16} fontSize={10} fill="#888" textAnchor="middle">
+            {hm(t.time)}
+          </text>
+        ))}
+
         {alerts.map((a, k) => {
           const i = tindex[a.time];
           if (i == null) return null;
@@ -116,10 +117,8 @@ export default function SignalsTab() {
                     stroke={buy ? "#1e824c" : "#c0392b"}
                     strokeWidth={a.aligned_with_daily ? 1.5 : 0.8}
                     strokeDasharray={a.aligned_with_daily ? "0" : "3 3"} opacity={0.5} />
-              <text x={x(i)} y={padT + 2} fontSize={11}
-                    fill={buy ? "#1e824c" : "#c0392b"} textAnchor="middle">
-                <title>{a.reasons.join(" · ")}</title>
-                {buy ? "▲" : "▼"}
+              <text x={x(i)} y={padT + 2} fontSize={11} fill={buy ? "#1e824c" : "#c0392b"} textAnchor="middle">
+                <title>{`${hm(a.time)} · ${a.reasons.join(" · ")}`}</title>{buy ? "▲" : "▼"}
               </text>
             </g>
           );
@@ -129,6 +128,7 @@ export default function SignalsTab() {
   }
 
   const v = data?.verdict;
+  const evalDate = data?.signal_curve?.length ? fecha(data.signal_curve[data.signal_curve.length - 1].time) : null;
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", fontFamily: "system-ui" }}>
@@ -151,8 +151,7 @@ export default function SignalsTab() {
           {loading ? "Analizando..." : "Generar señales"}
         </button>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#666" }}>
-          <input type="checkbox" checked={autoRefresh}
-            onChange={(e) => setAutoRefresh(e.target.checked)} />
+          <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
           Auto-refrescar (cada {MIN_REFRESH_MIN} min)
         </label>
       </div>
@@ -161,71 +160,56 @@ export default function SignalsTab() {
 
       {data && v && (
         <>
-          {/* Veredicto + score */}
           <div style={{ display: "flex", gap: 16, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
-            <div style={{
-              padding: "10px 18px", borderRadius: 8, color: "#fff", fontWeight: 700,
-              fontSize: 18, background: VERDICT_COLOR[v.label] || "#7f8c8d" }}>
-              {v.label}
-            </div>
-            <div style={{ fontSize: 13, color: "#555" }}>
-              Confluencia: <strong>{v.score}</strong>
-            </div>
+            <div style={{ padding: "10px 18px", borderRadius: 8, color: "#fff", fontWeight: 700,
+              fontSize: 18, background: VERDICT_COLOR[v.label] || "#7f8c8d" }}>{v.label}</div>
+            <div style={{ fontSize: 13, color: "#555" }}>Confluencia: <strong>{v.score}</strong></div>
             <div style={{ fontSize: 13 }}>{data.ticker} · ${data.last_price}</div>
+            {/* ✅ Fecha de evaluación */}
+            {evalDate && <div style={{ fontSize: 13 }}>📅 Sesión: <strong>{evalDate}</strong></div>}
             {lastUpdated && <div style={{ fontSize: 11, color: "#999" }}>Actualizado {lastUpdated}</div>}
           </div>
 
-          {/* Paneles: diario vs intradía */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
             <div style={{ padding: 12, background: "#f7f7f8", borderRadius: 8 }}>
               <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>SESGO DIARIO (XGBoost)</div>
               <div style={{ fontSize: 15, fontWeight: 600,
-                            color: data.daily_bias.sign > 0 ? "#1e824c" : data.daily_bias.sign < 0 ? "#c0392b" : "#7f8c8d" }}>
+                color: data.daily_bias.sign > 0 ? "#1e824c" : data.daily_bias.sign < 0 ? "#c0392b" : "#7f8c8d" }}>
                 {data.daily_bias.label} ({data.daily_bias.predicted_next_pct >= 0 ? "+" : ""}
                 {data.daily_bias.predicted_next_pct}%)
               </div>
               <div style={{ fontSize: 11, color: "#888" }}>
-                Confianza (dir.acc): {(data.daily_bias.confidence * 100).toFixed(0)}%
+                Confianza: {(data.daily_bias.confidence * 100).toFixed(0)}%
               </div>
             </div>
             <div style={{ padding: 12, background: "#f7f7f8", borderRadius: 8 }}>
               <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>ESTRUCTURA INTRADÍA</div>
               <div style={{ fontSize: 15, fontWeight: 600 }}>{data.intraday_structure.trend}</div>
               <div style={{ fontSize: 11, color: "#888" }}>
-                VWAP sesión: {data.session_vwap ? `$${data.session_vwap}` : "—"}
+                VWAP: {data.session_vwap ? `$${data.session_vwap}` : "—"}
               </div>
             </div>
           </div>
 
-          {/* Curva de señal */}
           <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
-            Curva de señal combinada (EMA del score de confluencia por vela):
+            Curva de señal combinada (EMA del score por vela):
           </div>
           {renderCurve()}
 
-          {/* Alertas */}
           <div style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-              🔔 Alertas ({data.alerts.length})
-            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>🔔 Alertas ({data.alerts.length})</div>
             {data.alerts.length === 0 && (
-              <p style={{ fontSize: 13, color: "#999" }}>
-                Sin breakouts confirmados en la sesión. La curva refleja el sesgo de fondo.
-              </p>
+              <p style={{ fontSize: 13, color: "#999" }}>Sin breakouts confirmados en la sesión.</p>
             )}
             {data.alerts.map((a: any, k: number) => (
-              <div key={k} style={{
-                padding: 10, marginBottom: 8, borderRadius: 8,
+              <div key={k} style={{ padding: 10, marginBottom: 8, borderRadius: 8,
                 background: a.aligned_with_daily ? "#eafaf1" : "#fbeeee",
                 borderLeft: `4px solid ${a.direction === "COMPRA" ? "#1e824c" : "#c0392b"}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap" }}>
                   <strong style={{ color: a.direction === "COMPRA" ? "#1e824c" : "#c0392b" }}>
-                    {a.direction} · fuerza {a.strength}
-                    {a.aligned_with_daily && " ✓ alineada con diario"}
+                    {a.direction} · fuerza {a.strength}{a.aligned_with_daily && " ✓ alineada con diario"}
                   </strong>
-                  <span style={{ fontSize: 11, color: "#888" }}>
-                    {new Date(a.time).toLocaleString()}
-                  </span>
+                  <span style={{ fontSize: 11, color: "#888" }}>{new Date(a.time).toLocaleString()}</span>
                 </div>
                 <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 12, color: "#555" }}>
                   {a.reasons.map((r: string, j: number) => <li key={j}>{r}</li>)}
@@ -234,9 +218,7 @@ export default function SignalsTab() {
             ))}
           </div>
 
-          <p style={{ fontSize: 11, color: "#999", marginTop: 12 }}>
-            ⓘ {data.note}
-          </p>
+          <p style={{ fontSize: 11, color: "#999", marginTop: 12 }}>ⓘ {data.note}</p>
         </>
       )}
     </div>

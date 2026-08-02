@@ -1,18 +1,12 @@
 "use client";
 
 /**
- * IntradayChart.tsx
- * -----------------
- * Curva INTRADÍA con CHARTISMO + PRICE ACTION.
- * Fuente: GET /intraday?ticker=NVDA&interval=5&days=1
+ * IntradayChart.tsx — Velas intradía + chartismo + price action
+ * =============================================================
+ * ✅ FIX eje X: ahora muestra la HORA en el eje X y la FECHA DE EVALUACIÓN
+ *    (sesión) en el encabezado. Antes el eje X no tenía tiempo indicado.
  *
- * Dibuja (SVG nativo, sin librerías de velas):
- *   - Velas japonesas (verde/rojo)
- *   - Líneas horizontales de soporte (verde) y resistencia (rojo)
- *   - Marcadores de patrones de price action (▲ alcista, ▼ bajista, ◆ indecisión)
- *   - Marcadores de breakout con volumen
- *   - Etiqueta de estructura de mercado (tendencia) y VWAP
- *
+ * Fuente: GET /intraday?ticker=NVDA&interval=15&days=1
  * Env: NEXT_PUBLIC_ML_API_URL
  */
 
@@ -20,20 +14,26 @@ import { useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_ML_API_URL || "http://localhost:8000";
 
-type Candle = { time: string; open: number; high: number; low: number; close: number; volume: number };
-type Level = { level: number; touches: number };
-type Pattern = { time: string; pattern: string; bias: string };
-type Breakout = { time: string; type: string; level: number; price: number };
-
 const BIAS_MARK: Record<string, { sym: string; color: string }> = {
   alcista: { sym: "▲", color: "#1e824c" },
   bajista: { sym: "▼", color: "#c0392b" },
   indecision: { sym: "◆", color: "#f39c12" },
 };
 
+// Formatea ISO -> "HH:MM" en hora local del navegador
+function hm(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+// Formatea ISO -> "DD MMM YYYY"
+function fecha(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
+}
+
 export default function IntradayChart() {
   const [ticker, setTicker] = useState("NVDA");
-  const [interval, setIntervalMin] = useState(5);
+  const [interval, setIntervalMin] = useState(15);
   const [days, setDays] = useState(1);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -42,23 +42,18 @@ export default function IntradayChart() {
   async function run() {
     setLoading(true); setError(null);
     try {
-      const res = await fetch(
-        `${API_URL}/intraday?ticker=${ticker}&interval=${interval}&days=${days}`);
+      const res = await fetch(`${API_URL}/intraday?ticker=${ticker}&interval=${interval}&days=${days}`);
       if (!res.ok) throw new Error((await res.json()).detail || "Error API");
       setData(await res.json());
-    } catch (e: any) {
-      setError(e.message); setData(null);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e: any) { setError(e.message); setData(null); }
+    finally { setLoading(false); }
   }
 
-  // ---- Geometría del SVG ----
-  const W = 940, H = 460, padL = 50, padR = 60, padT = 20, padB = 30;
+  const W = 940, H = 470, padL = 50, padR = 60, padT = 20, padB = 46;
   const plotW = W - padL - padR, plotH = H - padT - padB;
 
   function render() {
-    const candles: Candle[] = data.candles_ohlc;
+    const candles = data.candles_ohlc as any[];
     if (!candles.length) return null;
 
     const highs = candles.map((c) => c.high);
@@ -72,43 +67,52 @@ export default function IntradayChart() {
     const timeIndex: Record<string, number> = {};
     candles.forEach((c, i) => (timeIndex[c.time] = i));
 
-    const support: Level[] = data.chartism.support || [];
-    const resistance: Level[] = data.chartism.resistance || [];
-    const patterns: Pattern[] = data.price_action || [];
-    const breakouts: Breakout[] = data.chartism.breakouts || [];
+    const support = data.chartism.support || [];
+    const resistance = data.chartism.resistance || [];
+    const patterns = data.price_action || [];
+    const breakouts = data.chartism.breakouts || [];
+
+    // Ticks de HORA en X (7 etiquetas, detectando cambio de día)
+    const xticks = Array.from({ length: 7 }).map((_, k) => {
+      const i = Math.round((candles.length - 1) * (k / 6));
+      return { i, time: candles[i].time };
+    });
 
     return (
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ background: "#fff", border: "1px solid #eee", borderRadius: 8 }}>
-        {/* Eje Y (precios) */}
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`}
+           style={{ background: "#fff", border: "1px solid #eee", borderRadius: 8 }}>
+        {/* Eje Y */}
         {Array.from({ length: 5 }).map((_, k) => {
           const p = yMin + (yMax - yMin) * (k / 4);
           return (
             <g key={k}>
-              <line x1={padL} x2={W - padR} y1={y(p)} y2={y(p)} stroke="#f0f0f0" />
-              <text x={W - padR + 4} y={y(p) + 3} fontSize={10} fill="#999">
-                {p.toFixed(2)}
-              </text>
+              <line x1={padL} x2={W - padR} y1={y(p)} y2={y(p)} stroke="#f2f2f2" />
+              <text x={W - padR + 4} y={y(p) + 3} fontSize={10} fill="#999">{p.toFixed(2)}</text>
             </g>
           );
         })}
+        {/* Eje X con HORA (✅ el fix) */}
+        {xticks.map((t, k) => (
+          <g key={k}>
+            <line x1={x(t.i)} x2={x(t.i)} y1={padT} y2={H - padB} stroke="#f7f7f7" />
+            <text x={x(t.i)} y={H - padB + 16} fontSize={10} fill="#888" textAnchor="middle">{hm(t.time)}</text>
+          </g>
+        ))}
+        <text x={padL} y={H - 6} fontSize={10} fill="#bbb">Hora ({fecha(candles[0].time)})</text>
 
-        {/* Soportes (verde) y resistencias (rojo) */}
-        {support.map((s, k) => (
+        {/* Soportes / resistencias */}
+        {support.map((s: any, k: number) => (
           <g key={`s${k}`}>
             <line x1={padL} x2={W - padR} y1={y(s.level)} y2={y(s.level)}
                   stroke="#1e824c" strokeWidth={1} strokeDasharray="4 3" opacity={0.6} />
-            <text x={padL + 2} y={y(s.level) - 3} fontSize={9} fill="#1e824c">
-              S {s.level.toFixed(2)} ({s.touches})
-            </text>
+            <text x={padL + 2} y={y(s.level) - 3} fontSize={9} fill="#1e824c">S {s.level} ({s.touches})</text>
           </g>
         ))}
-        {resistance.map((r, k) => (
+        {resistance.map((r: any, k: number) => (
           <g key={`r${k}`}>
             <line x1={padL} x2={W - padR} y1={y(r.level)} y2={y(r.level)}
                   stroke="#c0392b" strokeWidth={1} strokeDasharray="4 3" opacity={0.6} />
-            <text x={padL + 2} y={y(r.level) - 3} fontSize={9} fill="#c0392b">
-              R {r.level.toFixed(2)} ({r.touches})
-            </text>
+            <text x={padL + 2} y={y(r.level) - 3} fontSize={9} fill="#c0392b">R {r.level} ({r.touches})</text>
           </g>
         ))}
 
@@ -122,42 +126,43 @@ export default function IntradayChart() {
             <g key={i}>
               <line x1={x(i)} x2={x(i)} y1={y(c.high)} y2={y(c.low)} stroke={col} strokeWidth={1} />
               <rect x={x(i) - cw * 0.3} y={bodyTop} width={cw * 0.6}
-                    height={Math.max(bodyBot - bodyTop, 1)} fill={col} />
+                    height={Math.max(bodyBot - bodyTop, 1)} fill={col}>
+                <title>{`${hm(c.time)}  O:${c.open} H:${c.high} L:${c.low} C:${c.close}`}</title>
+              </rect>
             </g>
           );
         })}
 
-        {/* Marcadores de price action */}
-        {patterns.map((p, k) => {
+        {/* Marcadores price action */}
+        {patterns.map((p: any, k: number) => {
           const i = timeIndex[p.time];
           if (i == null) return null;
           const m = BIAS_MARK[p.bias] || BIAS_MARK.indecision;
-          const yy = p.bias === "bajista"
-            ? y(candles[i].high) - 8 : y(candles[i].low) + 14;
+          const yy = p.bias === "bajista" ? y(candles[i].high) - 8 : y(candles[i].low) + 14;
           return (
-            <text key={`p${k}`} x={x(i)} y={yy} fontSize={11}
-                  fill={m.color} textAnchor="middle">
-              <title>{`${p.pattern} (${p.bias})`}</title>
-              {m.sym}
+            <text key={`p${k}`} x={x(i)} y={yy} fontSize={11} fill={m.color} textAnchor="middle">
+              <title>{`${hm(p.time)} · ${p.pattern} (${p.bias})`}</title>{m.sym}
             </text>
           );
         })}
 
-        {/* Marcadores de breakout */}
-        {breakouts.map((b, k) => {
+        {/* Breakouts */}
+        {breakouts.map((b: any, k: number) => {
           const i = timeIndex[b.time];
           if (i == null) return null;
           const bull = b.type.includes("alcista");
           return (
             <circle key={`b${k}`} cx={x(i)} cy={y(b.price)} r={4}
                     fill="none" stroke={bull ? "#1e824c" : "#c0392b"} strokeWidth={2}>
-              <title>{`${b.type} @ ${b.level}`}</title>
+              <title>{`${hm(b.time)} · ${b.type} @ ${b.level}`}</title>
             </circle>
           );
         })}
       </svg>
     );
   }
+
+  const sessionDate = data?.candles_ohlc?.length ? fecha(data.candles_ohlc[0].time) : null;
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", fontFamily: "system-ui" }}>
@@ -193,6 +198,8 @@ export default function IntradayChart() {
         <>
           <div style={{ display: "flex", gap: 16, marginBottom: 10, fontSize: 13, flexWrap: "wrap" }}>
             <span><strong>{data.ticker}</strong> · ${data.last_price}</span>
+            {/* ✅ Fecha de evaluación */}
+            {sessionDate && <span>📅 Sesión: <strong>{sessionDate}</strong></span>}
             <span>Tendencia: <strong>{data.chartism.structure.trend}</strong></span>
             {data.session_vwap && <span>VWAP: ${data.session_vwap}</span>}
             <span style={{ color: "#666" }}>{data.candles_ohlc.length} velas de {data.interval_min}m</span>
@@ -200,36 +207,14 @@ export default function IntradayChart() {
 
           {render()}
 
-          {/* Leyenda */}
-          <div style={{ display: "flex", gap: 16, marginTop: 10, fontSize: 12, flexWrap: "wrap", color: "#555" }}>
+          <div style={{ display: "flex", gap: 16, marginTop: 10, fontSize: 12, color: "#555", flexWrap: "wrap" }}>
             <span style={{ color: "#1e824c" }}>▲ alcista</span>
             <span style={{ color: "#c0392b" }}>▼ bajista</span>
-            <span style={{ color: "#f39c12" }}>◆ indecisión (doji)</span>
+            <span style={{ color: "#f39c12" }}>◆ indecisión</span>
             <span style={{ color: "#1e824c" }}>— soporte</span>
             <span style={{ color: "#c0392b" }}>— resistencia</span>
-            <span>◯ breakout con volumen</span>
+            <span>◯ breakout</span>
           </div>
-
-          {/* Últimos patrones detectados */}
-          {data.price_action.length > 0 && (
-            <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
-                Últimos patrones de price action:
-              </div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {data.price_action.slice(-10).reverse().map((p: Pattern, k: number) => {
-                  const m = BIAS_MARK[p.bias] || BIAS_MARK.indecision;
-                  return (
-                    <span key={k} style={{
-                      padding: "4px 8px", background: "#f7f7f8", borderRadius: 6,
-                      fontSize: 12, borderLeft: `3px solid ${m.color}` }}>
-                      {m.sym} {p.pattern.replace(/_/g, " ")}
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </>
       )}
     </div>
