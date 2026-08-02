@@ -1,18 +1,14 @@
 """
-main.py — API de ML para predicción, simulación, intradía, señales y técnico
-============================================================================
+main.py — API de ML para predicción, simulación, intradía, señales, técnico y MLP
+=================================================================================
 Endpoints:
-    GET  /health
-    GET  /models
-    GET  /backtest            ?ticker=NVDA
-    GET  /dashboard
-    GET  /intraday            ?ticker=NVDA&interval=15&days=1
-    GET  /signals             ?ticker=NVDA&interval=15&days=2
-    GET  /signals-scan        ?tickers=NVDA,META
-    GET  /forecast-sentiment  ?ticker=NVDA&horizon=30     (ML + noticias)
-    GET  /technical           ?ticker=NVDA&horizon=20     (Elliott + Fibonacci)
-    GET  /forecast-history    ?ticker=NVDA
-    POST /predict  /simulate  /forecast  /backfill-actuals
+    GET  /health · /models · /models-mlp
+    GET  /backtest · /dashboard
+    GET  /intraday · /signals · /signals-scan
+    GET  /forecast-sentiment · /technical
+    GET  /predict-mlp                              ← curva RED NEURONAL (MLP)
+    GET  /forecast-history
+    POST /predict · /simulate · /forecast · /backfill-actuals
 
 Deploy: uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
 """
@@ -41,10 +37,11 @@ from intraday import analyze_intraday           # noqa: E402
 from signals import combined_signals, scan_watchlist  # noqa: E402
 from sentiment import forecast_with_sentiment   # noqa: E402
 from technical import technical_analysis        # noqa: E402
+from mlp import predict_curve_mlp               # noqa: E402  ← curva red neuronal
 import supabase_client as sb                     # noqa: E402
 
 ARTIFACT_DIR = Path(__file__).resolve().parent / "artifacts"
-app = FastAPI(title="Stock ML API", version="2.0.0")
+app = FastAPI(title="Stock ML API", version="2.1.0")
 
 ALLOWED = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(CORSMiddleware, allow_origins=ALLOWED, allow_credentials=True,
@@ -93,7 +90,7 @@ def load_model(ticker: str):
 
 
 def predict_curve(ticker: str, horizon: int) -> dict:
-    """Predicción recursiva: predice el retorno del día siguiente y lo compone."""
+    """Predicción recursiva XGBoost: predice el retorno del día siguiente y lo compone."""
     model, meta = load_model(ticker)
     raw = fetch_polygon(ticker, years=1)
     df = add_features(raw).dropna().reset_index(drop=True)
@@ -139,6 +136,12 @@ def list_models():
     return {"available": sorted(p.stem.replace("xgb_", "") for p in ARTIFACT_DIR.glob("xgb_*.joblib"))}
 
 
+@app.get("/models-mlp")
+def list_models_mlp():
+    """Tickers que tienen modelo de red neuronal (MLP) entrenado."""
+    return {"available": sorted(p.stem.replace("mlp_", "") for p in ARTIFACT_DIR.glob("mlp_*.joblib"))}
+
+
 @app.get("/backtest")
 def get_backtest(ticker: str):
     path = ARTIFACT_DIR / f"backtest_{ticker.upper()}.json"
@@ -152,6 +155,9 @@ def get_backtest(ticker: str):
 def dashboard():
     rows = []
     for meta_path in sorted(ARTIFACT_DIR.glob("meta_*.json")):
+        # Evita los meta_mlp_*.json en esta vista (son de la red neuronal)
+        if meta_path.stem.startswith("meta_mlp_"):
+            continue
         t = meta_path.stem.replace("meta_", "")
         with open(meta_path) as f:
             meta = json.load(f)
@@ -210,6 +216,17 @@ def technical(ticker: str, horizon: int = 20, zigzag: float = 0.03):
     """Análisis técnico mixto: histórico + predicción + ZigZag + Elliott + Fibonacci."""
     try:
         return technical_analysis(predict_curve, ticker, horizon, zigzag_pct=zigzag)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/predict-mlp")
+def predict_mlp(ticker: str, horizon: int = 21):
+    """Curva de predicción con la RED NEURONAL (MLP). Mismo formato que /predict."""
+    try:
+        return predict_curve_mlp(ticker, horizon)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e))
     except Exception as e:
