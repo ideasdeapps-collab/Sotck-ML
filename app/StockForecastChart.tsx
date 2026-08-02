@@ -1,16 +1,19 @@
 "use client";
 
 /**
- * StockForecastChart.tsx — Predicción (mejorada)
- * ==============================================
- * ✅ Selector de rango: 1D · 5D · 1M · 6M  (por defecto 1M, ya calculada al cargar)
- * ✅ Ticker como LISTA DESPLEGABLE (poblada desde /models)
- * ✅ Incluye la curva "ML + Sentimiento" superpuesta + nota de riesgo
+ * StockForecastChart.tsx — Predicción (con curva Deep Learning / MLP)
+ * ===================================================================
+ * Curvas superpuestas:
+ *   • Histórico
+ *   • XGBoost (naranja, punteada)
+ *   • Red Neuronal / MLP (verde)          ← NUEVO
+ *   • XGBoost + Sentimiento (morada)
+ *   • Mediana Monte Carlo + bandas P5–P95 / P25–P75
  *
- * Combina 2 endpoints en paralelo:
- *   POST /forecast            -> histórico + XGBoost + bandas Monte Carlo
- *   GET  /forecast-sentiment  -> curva ajustada por sentimiento + noticias
+ * Controles: rango 1D/5D/1M/6M (default 1M, autocalculada) + ticker desplegable.
  *
+ * Endpoints (en paralelo):
+ *   POST /forecast · GET /predict-mlp · GET /forecast-sentiment
  * Env: NEXT_PUBLIC_ML_API_URL
  */
 
@@ -22,7 +25,6 @@ import {
 
 const API_URL = process.env.NEXT_PUBLIC_ML_API_URL || "http://localhost:8000";
 
-// Rangos -> horizonte en días hábiles de proyección
 const RANGES: { id: string; label: string; horizon: number }[] = [
   { id: "1D", label: "1D", horizon: 1 },
   { id: "5D", label: "5D", horizon: 5 },
@@ -39,13 +41,13 @@ export default function StockForecastChart() {
   const [summary, setSummary] = useState<any>(null);
   const [sentiment, setSentiment] = useState<any>(null);
   const [riskNote, setRiskNote] = useState<string>("");
+  const [hasMlp, setHasMlp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const horizon = useMemo(
     () => RANGES.find((r) => r.id === range)?.horizon ?? 21, [range]);
 
-  // 1) Al montar: cargar la lista de modelos y autocalcular con el default
   useEffect(() => {
     (async () => {
       try {
@@ -53,9 +55,7 @@ export default function StockForecastChart() {
         const j = await res.json();
         const avail: string[] = j.available || [];
         setModels(avail);
-        // Ticker por defecto: TSM si existe, si no el primero disponible
-        const def = avail.includes("TSM") ? "TSM" : avail[0] || "";
-        setTicker(def);
+        setTicker(avail.includes("TSM") ? "TSM" : avail[0] || "");
       } catch {
         setError("No se pudo cargar la lista de modelos (/models).");
       }
@@ -63,7 +63,6 @@ export default function StockForecastChart() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 2) Cuando ya hay ticker (o cambia ticker/rango): recalcular automáticamente
   useEffect(() => {
     if (ticker) run(ticker, horizon);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -72,21 +71,18 @@ export default function StockForecastChart() {
   async function run(tk: string, h: number) {
     setLoading(true); setError(null);
     try {
-      // Llamadas en paralelo (Polygon cachea el diario, así que no gasta cuota extra)
-      const [fRes, sRes] = await Promise.all([
+      // 3 llamadas en paralelo. El diario de Polygon se cachea => sin cuota extra.
+      const [fRes, mRes, sRes] = await Promise.all([
         fetch(`${API_URL}/forecast`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ticker: tk, horizon: h, n_sims: 10000 }),
         }),
+        fetch(`${API_URL}/predict-mlp?ticker=${tk}&horizon=${h}`),
         fetch(`${API_URL}/forecast-sentiment?ticker=${tk}&horizon=${h}`),
       ]);
 
       if (!fRes.ok) throw new Error((await fRes.json()).detail || "Error en /forecast");
       const fj = await fRes.json();
-
-      // Sentimiento puede fallar (sin noticias) -> degradar con elegancia
-      let sj: any = null;
-      if (sRes.ok) sj = await sRes.json();
 
       const rows: Record<string, any> = {};
       fj.prediction.history.forEach((hh: any) =>
@@ -102,21 +98,31 @@ export default function StockForecastChart() {
         };
       });
 
-      // Curva ML + Sentimiento (alineada por fecha)
-      if (sj?.ml_plus_sentiment) {
-        sj.ml_plus_sentiment.forEach((p: any) => {
+      // Curva MLP (verde) — degradación elegante si el ticker no tiene modelo MLP
+      if (mRes.ok) {
+        const mj = await mRes.json();
+        mj.prediction.forEach((p: any) => {
+          rows[p.date] = { ...(rows[p.date] || { date: p.date }), mlp: p.close };
+        });
+        setHasMlp(true);
+      } else {
+        setHasMlp(false);
+      }
+
+      // Curva ML + Sentimiento (morada)
+      if (sRes.ok) {
+        const sj = await sRes.json();
+        (sj.ml_plus_sentiment || []).forEach((p: any) => {
           rows[p.date] = { ...(rows[p.date] || { date: p.date }), mlSent: p.close };
         });
-        setSentiment(sj.sentiment);
+        setSentiment(sj.sentiment || null);
         setRiskNote(sj.risk_note || "");
       } else {
         setSentiment(null); setRiskNote("");
       }
 
-      const merged = Object.values(rows).sort((a: any, b: any) => a.date.localeCompare(b.date));
-      setData(merged);
-      setSummary({ ...sim.terminal, metrics: fj.prediction.model_meta,
-                   lastClose: fj.prediction.last_close });
+      setData(Object.values(rows).sort((a: any, b: any) => a.date.localeCompare(b.date)));
+      setSummary({ ...sim.terminal, metrics: fj.prediction.model_meta });
     } catch (e: any) {
       setError(e.message); setData([]); setSummary(null);
     } finally {
@@ -139,7 +145,6 @@ export default function StockForecastChart() {
           </select>
         </label>
 
-        {/* Selector de rango (segmented) */}
         <div>
           <div style={{ fontSize: 12, color: "#666", marginBottom: 2 }}>Rango</div>
           <div style={{ display: "inline-flex", border: "1px solid #ddd", borderRadius: 8, overflow: "hidden" }}>
@@ -166,7 +171,6 @@ export default function StockForecastChart() {
 
       {error && <p style={{ color: "#c0392b" }}>⚠️ {error}</p>}
 
-      {/* Nota de gestión de riesgo (sentimiento) */}
       {riskNote && (
         <div style={{
           padding: 10, marginBottom: 12, borderRadius: 8, fontSize: 13,
@@ -181,6 +185,16 @@ export default function StockForecastChart() {
         </div>
       )}
 
+      {!hasMlp && data.length > 0 && (
+        <p style={{ fontSize: 12, color: "#b8860b", marginTop: -4, marginBottom: 10 }}>
+          ⓘ Este ticker aún no tiene modelo MLP entrenado. Corre
+          <code style={{ background: "#f4f4f4", padding: "1px 5px", borderRadius: 4 }}>
+            {" "}train_mlp.py --ticker {ticker}{" "}
+          </code>
+          para ver la curva de red neuronal.
+        </p>
+      )}
+
       {data.length > 0 && (
         <>
           <ResponsiveContainer width="100%" height={430}>
@@ -190,18 +204,18 @@ export default function StockForecastChart() {
               <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11 }} width={60} />
               <Tooltip />
               <Legend />
-              {/* Bandas Monte Carlo */}
               <Area dataKey="band95Base" stackId="b95" stroke="none" fill="transparent" legendType="none" />
               <Area dataKey="band95" stackId="b95" stroke="none" fill="#3498db" fillOpacity={0.10} name="Escenario P5–P95" />
               <Area dataKey="band75Base" stackId="b75" stroke="none" fill="transparent" legendType="none" />
               <Area dataKey="band75" stackId="b75" stroke="none" fill="#3498db" fillOpacity={0.20} name="Escenario P25–P75" />
-              {/* Curvas */}
               <Line dataKey="historical" stroke="#111" dot={false} strokeWidth={2} name="Histórico" connectNulls />
               <Line dataKey="prediction" stroke="#e67e22" dot={false} strokeWidth={2}
-                    strokeDasharray="5 4" name="Predicción XGBoost" connectNulls />
+                    strokeDasharray="5 4" name="XGBoost" connectNulls />
+              <Line dataKey="mlp" stroke="#16a085" dot={false} strokeWidth={2}
+                    name="Red Neuronal (MLP)" connectNulls />
               <Line dataKey="mlSent" stroke="#8e44ad" dot={false} strokeWidth={2}
                     name="XGBoost + Sentimiento" connectNulls />
-              <Line dataKey="median" stroke="#3498db" dot={false} strokeWidth={1.3}
+              <Line dataKey="median" stroke="#3498db" dot={false} strokeWidth={1.2}
                     strokeDasharray="2 3" name="Mediana Monte Carlo" connectNulls />
             </ComposedChart>
           </ResponsiveContainer>
@@ -216,8 +230,9 @@ export default function StockForecastChart() {
           )}
 
           <p style={{ fontSize: 11, color: "#999", marginTop: 12 }}>
-            ⓘ La curva morada ajusta la predicción XGBoost con el sentimiento de noticias
-            (Polygon), como modulador de riesgo. Bandas azules = escenarios Monte Carlo.
+            ⓘ Tres modelos comparables: <b style={{ color: "#e67e22" }}>XGBoost</b> (gradient boosting),
+            <b style={{ color: "#16a085" }}> MLP</b> (red neuronal) y
+            <b style={{ color: "#8e44ad" }}> XGBoost+Sentimiento</b>. Bandas azules = escenarios Monte Carlo.
           </p>
         </>
       )}
