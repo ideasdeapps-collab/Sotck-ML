@@ -35,6 +35,8 @@ from train_xgb import fetch_polygon, add_features, FEATURE_COLS  # noqa: E402
 
 from simulate import monte_carlo_gbm  # noqa: E402
 from intraday import analyze_intraday  # noqa: E402
+from sentiment import forecast_with_sentiment
+from technical import technical_analysis
 from signals import combined_signals, scan_watchlist  # noqa: E402
 import supabase_client as sb  # noqa: E402
 
