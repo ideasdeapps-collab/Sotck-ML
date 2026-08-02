@@ -1,6 +1,5 @@
-name: Retrain XGBoost models
+name: Retrain models (XGBoost + MLP)
 
-# Reentrena los modelos, corre backtest y guarda forecasts en Supabase.
 on:
   schedule:
     - cron: "0 11 * * 1-5"       # lunes a viernes 11:00 UTC (~05:00 Morelia)
@@ -11,7 +10,7 @@ on:
         default: ""
 
 env:
-  # Plan gratuito Polygon = 2 años de histórico -> usa 2, no 5.
+  # Plan gratuito Polygon = 2 años de histórico.
   DEFAULT_TICKERS: "SNDK SMH AMAT TSM QQQ NVDA MU XLI AVGO SPCX KOID BOTZ IGV ASML META SKHY SOXX IDGT"
   YEARS: "2"
 
@@ -26,7 +25,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Asegura que las credenciales se conserven para el push.
           persist-credentials: true
 
       - uses: actions/setup-python@v5
@@ -36,7 +34,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r api/requirements.txt
 
-      # 1) Falla temprano y claro si el secret no está configurado.
       - name: Check POLYGON_API_KEY
         env:
           POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
@@ -47,9 +44,7 @@ jobs:
           fi
           echo "POLYGON_API_KEY presente (len=${#POLYGON_API_KEY})."
 
-      # 2) Entrena. NO ocultamos el error: si un ticker falla, lo registramos
-      #    pero seguimos; al final validamos que exista al menos 1 modelo.
-      - name: Train + backtest
+      - name: Train (XGBoost + MLP) + backtest — rate-limit friendly
         env:
           POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
         run: |
@@ -59,38 +54,45 @@ jobs:
           FAILED=""
           for T in $TICKERS; do
             echo "::group::Entrenando $T"
-            if python training/train_xgb.py --ticker "$T" --years "$YEARS"; then
+            OK=0
+            for ATTEMPT in 1 2; do
+              if python training/train_xgb.py --ticker "$T" --years "$YEARS"; then OK=1; break; fi
+              echo "::warning::train_xgb intento $ATTEMPT falló para $T; esperando 20s..."
+              sleep 20
+            done
+            if [ "$OK" -eq 1 ]; then
+              # Red neuronal (MLP) — reutiliza el diario cacheado, no gasta llamada extra
+              python training/train_mlp.py --ticker "$T" --years "$YEARS" \
+                || echo "::warning::train_mlp falló para $T"
+              sleep 13
               python training/backtest.py --ticker "$T" --years "$YEARS" --test-days 120 \
                 || echo "::warning::backtest falló para $T"
             else
-              echo "::warning::train falló para $T"
+              echo "::warning::train_xgb falló definitivamente para $T"
               FAILED="$FAILED $T"
             fi
             echo "::endgroup::"
+            sleep 15   # espaciado global: <5 llamadas/min en plan gratuito
           done
           echo "Tickers con fallo:$FAILED"
 
-      # 3) Verifica que haya artefactos ANTES de commitear (evita el error 128).
       - name: Verify artifacts exist
         run: |
           COUNT=$(ls api/artifacts/*.joblib 2>/dev/null | wc -l)
-          echo "Modelos generados: $COUNT"
+          echo "Artefactos generados (.joblib): $COUNT"
           if [ "$COUNT" -eq 0 ]; then
-            echo "::error::No se generó ningún modelo. Revisa el log de 'Train + backtest' (API key, rate-limit o datos)."
+            echo "::error::No se generó ningún modelo. Revisa el log de 'Train'."
             exit 1
           fi
 
-      # 4) Commit resiliente: solo agrega lo que exista, y no falla si no hay cambios.
       - name: Commit artifacts
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Usa find en vez de glob para no romper si algún patrón no matchea.
-          find api/artifacts -type f \( -name '*.joblib' -o -name '*.json' \) -print0 \
-            | xargs -0 git add
+          find api/artifacts -type f \( -name '*.joblib' -o -name '*.json' \) -print0 | xargs -0 git add
           if git diff --cached --quiet; then
             echo "Sin cambios que commitear."
           else
-            git commit -m "chore: retrain + backtest [skip ci]"
+            git commit -m "chore: retrain XGBoost + MLP + backtest [skip ci]"
             git push
           fi
