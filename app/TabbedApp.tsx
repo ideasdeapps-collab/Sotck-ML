@@ -1,35 +1,39 @@
 "use client";
 
 /**
- * TabbedApp.tsx — Contenedor de pestañas (actualizado con 2 nuevas vistas)
- * ========================================================================
- *   1) Predicción       -> StockForecastChart
- *   2) ML + Sentimiento  -> SentimentChart        (NUEVO — punto 2)
- *   3) Intradía          -> IntradayChart          (eje X corregido — punto 3)
- *   4) Señales           -> SignalsTab             (eje X corregido — punto 3)
- *   5) Técnico (Elliott) -> TechnicalTab           (NUEVO — punto 4)
+ * TabbedApp.tsx — Contenedor de pestañas
+ * ======================================
+ *   1) Predicción       -> StockForecastChart (rango 1D/5D/1M/6M + ticker
+ *                          desplegable + ML+Sentimiento incluido)
+ *   2) Intradía          -> IntradayChart   (eje X con hora + fecha)
+ *   3) Señales           -> SignalsTab       (eje X con hora + fecha)
+ *   4) Técnico (Elliott) -> TechnicalTab
+ *   5) Backtest          -> BacktestChart
  *   6) Panel             -> Dashboard
+ *
+ * Nota: la vista de "ML + Sentimiento" se integró dentro de Predicción,
+ * por eso ya no aparece como pestaña independiente.
  */
 
 import { useState } from "react";
 import StockForecastChart from "./StockForecastChart";
-import SentimentChart from "./SentimentChart";
 import IntradayChart from "./IntradayChart";
 import SignalsTab from "./SignalsTab";
 import TechnicalTab from "./TechnicalTab";
+import BacktestChart from "./BacktestChart";
 import Dashboard from "./Dashboard";
 
 const TABS = [
   { id: "forecast", label: "📈 Predicción", node: <StockForecastChart /> },
-  { id: "sentiment", label: "📰 ML + Sentimiento", node: <SentimentChart /> },
   { id: "intraday", label: "📉 Intradía", node: <IntradayChart /> },
   { id: "signals", label: "🔔 Señales", node: <SignalsTab /> },
   { id: "technical", label: "🌊 Técnico (Elliott)", node: <TechnicalTab /> },
+  { id: "backtest", label: "🎯 Backtest", node: <BacktestChart /> },
   { id: "dashboard", label: "📊 Panel", node: <Dashboard /> },
 ];
 
 export default function TabbedApp() {
-  const [active, setActive] = useState("technical");
+  const [active, setActive] = useState("forecast");
 
   return (
     <div style={{ maxWidth: 1040, margin: "0 auto", padding: 16, fontFamily: "system-ui" }}>
