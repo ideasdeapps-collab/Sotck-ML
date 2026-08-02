@@ -15,11 +15,19 @@ env:
   DEFAULT_TICKERS: "SNDK SMH AMAT TSM QQQ NVDA MU XLI AVGO SPCX KOID BOTZ IGV ASML META SKHY SOXX IDGT"
   YEARS: "2"
 
+# Permite que el GITHUB_TOKEN haga push de los artefactos al repo.
+# (Además: Settings → Actions → General → Workflow permissions → Read and write.)
+permissions:
+  contents: write
+
 jobs:
   retrain:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Asegura que las credenciales se conserven para el push.
+          persist-credentials: true
 
       - uses: actions/setup-python@v5
         with:
