@@ -1,0 +1,41 @@
+name: Intraday signals scan
+
+# Escanea señales combinadas durante horario de mercado.
+#
+# Timing pensado para el PLAN GRATUITO de Polygon:
+#   - Dato con 15 min de retraso  -> escanear cada 30 min es más que suficiente.
+#   - Límite 5 llamadas/min        -> se recorre 1 ticker a la vez con 'sleep 15'
+#                                     (el servidor además estrangula a 5/min).
+#
+# Horario de mercado US = 9:30–16:00 ET.
+# Morelia (GMT-6) = 7:30–14:00 local  ->  13:30–20:00 UTC (agosto, EDT).
+# Cron cada 30 min, de lunes a viernes, dentro de esa ventana.
+on:
+  schedule:
+    - cron: "0,30 13-20 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: "Tickers separados por espacio (vacío = watchlist completa)"
+        default: ""
+
+env:
+  DEFAULT_TICKERS: "SNDK SMH AMAT TSM QQQ NVDA MU XLI AVGO SPCX KOID BOTZ IGV ASML META SKHY SOXX IDGT"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    if: ${{ vars.ML_API_URL != '' }}
+    steps:
+      - name: Scan combined signals (rate-limit friendly)
+        run: |
+          TICKERS="${{ github.event.inputs.tickers }}"
+          if [ -z "$TICKERS" ]; then TICKERS="$DEFAULT_TICKERS"; fi
+          for T in $TICKERS; do
+            echo "=== Señales $T ==="
+            curl -s "${{ vars.ML_API_URL }}/signals?ticker=$T&interval=15&days=2" \
+              -o /dev/null -w "  status: %{http_code}\n" || true
+            # 15s entre tickers => como máximo 4 llamadas/min desde el cliente,
+            # muy por debajo del límite de 5/min del plan gratuito.
+            sleep 15
+          done
