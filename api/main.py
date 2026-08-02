@@ -1,12 +1,13 @@
 """
-main.py — API de ML para predicción, simulación, intradía, señales, técnico y MLP
-=================================================================================
+main.py — API de ML (predicción, simulación, intradía, señales, técnico, MLP, validación)
+=========================================================================================
 Endpoints:
     GET  /health · /models · /models-mlp
     GET  /backtest · /dashboard
     GET  /intraday · /signals · /signals-scan
     GET  /forecast-sentiment · /technical
     GET  /predict-mlp                              ← curva RED NEURONAL (MLP)
+    GET  /validate                                 ← predicho vs real (XGBoost y MLP)
     GET  /forecast-history
     POST /predict · /simulate · /forecast · /backfill-actuals
 
@@ -38,10 +39,11 @@ from signals import combined_signals, scan_watchlist  # noqa: E402
 from sentiment import forecast_with_sentiment   # noqa: E402
 from technical import technical_analysis        # noqa: E402
 from mlp import predict_curve_mlp               # noqa: E402  ← curva red neuronal
+from validate import validate_models           # noqa: E402  ← predicho vs real
 import supabase_client as sb                     # noqa: E402
 
 ARTIFACT_DIR = Path(__file__).resolve().parent / "artifacts"
-app = FastAPI(title="Stock ML API", version="2.1.0")
+app = FastAPI(title="Stock ML API", version="2.2.0")
 
 ALLOWED = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(CORSMiddleware, allow_origins=ALLOWED, allow_credentials=True,
@@ -155,7 +157,6 @@ def get_backtest(ticker: str):
 def dashboard():
     rows = []
     for meta_path in sorted(ARTIFACT_DIR.glob("meta_*.json")):
-        # Evita los meta_mlp_*.json en esta vista (son de la red neuronal)
         if meta_path.stem.startswith("meta_mlp_"):
             continue
         t = meta_path.stem.replace("meta_", "")
@@ -227,6 +228,17 @@ def predict_mlp(ticker: str, horizon: int = 21):
     """Curva de predicción con la RED NEURONAL (MLP). Mismo formato que /predict."""
     try:
         return predict_curve_mlp(ticker, horizon)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/validate")
+def validate(ticker: str, days: int = 60):
+    """Validación 1-paso: predicho vs. real para XGBoost y MLP (últimos N días)."""
+    try:
+        return validate_models(ticker, days)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e))
     except Exception as e:
