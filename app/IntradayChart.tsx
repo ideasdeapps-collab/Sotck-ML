@@ -1,19 +1,16 @@
 "use client";
 
 /**
- * IntradayChart.tsx — Velas + Elliott + ZONAS DE TRADING + Premarket
- * ==================================================================
- * ✅ Eje X con hora + fecha de sesión
- * ✅ Ondas de Elliott (0-5) + ZigZag sobre las velas
- * ✅ NUEVO: zona de ENTRADA (banda), STOP LOSS (rojo) y TAKE PROFIT 1/2 (verde),
- *    derivados de Elliott+Fibonacci (campo "trade_setup" de /intraday).
- * ✅ NUEVO: panel PREMARKET (GET /premarket) — objetivo diario de XGBoost y MLP
- *    anclado al precio premarket, con confirmación/contradicción.
+ * IntradayChart.tsx — Velas + Elliott (1-5 + ABC) + zonas de trading + premarket
+ * ==============================================================================
+ * ✅ Ticker como MENÚ DESPLEGABLE (poblado desde /models)
+ * ✅ Ondas de Elliott etiquetadas 1·2·3·4·5 (impulso) y A·B·C (corrección)
+ * ✅ Zonas de entrada / SL / TP (Elliott+Fibonacci) + panel premarket
  *
  * Env: NEXT_PUBLIC_ML_API_URL
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_ML_API_URL || "http://localhost:8000";
 
@@ -26,7 +23,8 @@ const hm = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digi
 const fecha = (iso: string) => new Date(iso).toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
 
 export default function IntradayChart() {
-  const [ticker, setTicker] = useState("NVDA");
+  const [models, setModels] = useState<string[]>([]);
+  const [ticker, setTicker] = useState<string>("");
   const [interval, setIntervalMin] = useState(15);
   const [days, setDays] = useState(1);
   const [showElliott, setShowElliott] = useState(true);
@@ -36,12 +34,28 @@ export default function IntradayChart() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function run() {
+  // Poblar el desplegable desde /models
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${API_URL}/models`);
+        const j = await r.json();
+        const avail: string[] = j.available || [];
+        setModels(avail);
+        setTicker(avail.includes("NVDA") ? "NVDA" : avail[0] || "");
+      } catch {
+        setError("No se pudo cargar la lista de modelos (/models).");
+      }
+    })();
+  }, []);
+
+  async function run(tk: string) {
+    if (!tk) return;
     setLoading(true); setError(null);
     try {
       const [iRes, pRes] = await Promise.all([
-        fetch(`${API_URL}/intraday?ticker=${ticker}&interval=${interval}&days=${days}`),
-        fetch(`${API_URL}/premarket?ticker=${ticker}`),
+        fetch(`${API_URL}/intraday?ticker=${tk}&interval=${interval}&days=${days}`),
+        fetch(`${API_URL}/premarket?ticker=${tk}`),
       ]);
       if (!iRes.ok) throw new Error((await iRes.json()).detail || "Error API intradía");
       setData(await iRes.json());
@@ -57,11 +71,8 @@ export default function IntradayChart() {
     const candles = data.candles_ohlc as any[];
     if (!candles.length) return null;
     const setup = data.trade_setup;
-    // rango Y incluye niveles de trading para que quepan
     const extra: number[] = [];
-    if (setup?.found) {
-      extra.push(setup.stop_loss, ...setup.take_profit, ...setup.entry_zone);
-    }
+    if (setup?.found) extra.push(setup.stop_loss, ...setup.take_profit, ...setup.entry_zone);
     const yMax = Math.max(...candles.map((c) => c.high), ...extra) * 1.002;
     const yMin = Math.min(...candles.map((c) => c.low), ...extra) * 0.998;
     const y = (p: number) => padT + (yMax - p) / (yMax - yMin) * plotH;
@@ -76,7 +87,9 @@ export default function IntradayChart() {
     const breakouts = data.chartism.breakouts || [];
     const ell = data.elliott || {};
     const zz = (ell.zigzag || []) as any[];
-    const waves = ell.elliott?.found ? ell.elliott.points : [];
+    // Etiquetas 1-5: mostramos solo 1..5 (omitimos el "0" para claridad)
+    const waves = ell.elliott?.found ? ell.elliott.points.filter((w: any) => w.label !== "0") : [];
+    const abc = ell.abc?.found ? ell.abc.points : [];
     const xticks = Array.from({ length: 7 }).map((_, k) => {
       const i = Math.round((candles.length - 1) * (k / 6));
       return { i, time: candles[i].time };
@@ -96,35 +109,27 @@ export default function IntradayChart() {
         ))}
         <text x={padL} y={H - 6} fontSize={10} fill="#bbb">Hora ({fecha(candles[0].time)})</text>
 
-        {/* ===== ZONAS DE TRADING (entrada / SL / TP) ===== */}
+        {/* Zonas de trading */}
         {showLevels && setup?.found && (() => {
           const ez = setup.entry_zone, tp = setup.take_profit, sl = setup.stop_loss;
           const yEzTop = y(Math.max(ez[0], ez[1])), yEzBot = y(Math.min(ez[0], ez[1]));
-          return (
-            <g>
-              {/* Zona de entrada (banda azul) */}
-              <rect x={padL} y={yEzTop} width={plotW} height={Math.max(yEzBot - yEzTop, 2)}
-                    fill="#2980b9" fillOpacity={0.12} />
-              <text x={W - padR + 4} y={(yEzTop + yEzBot) / 2 + 3} fontSize={9} fill="#2980b9">ENTRADA</text>
-              {/* Stop loss (rojo) */}
-              <line x1={padL} x2={W - padR} y1={y(sl)} y2={y(sl)} stroke="#c0392b" strokeWidth={1.5} strokeDasharray="6 3" />
-              <text x={W - padR + 4} y={y(sl) + 3} fontSize={9} fill="#c0392b">SL {sl}</text>
-              {/* Take profit 1 y 2 (verde) */}
-              {tp.map((v: number, k: number) => (
-                <g key={k}>
-                  <line x1={padL} x2={W - padR} y1={y(v)} y2={y(v)} stroke="#1e824c" strokeWidth={1.3} strokeDasharray="6 3" />
-                  <text x={W - padR + 4} y={y(v) + 3} fontSize={9} fill="#1e824c">TP{k + 1} {v}</text>
-                </g>
-              ))}
-            </g>
-          );
+          return (<g>
+            <rect x={padL} y={yEzTop} width={plotW} height={Math.max(yEzBot - yEzTop, 2)} fill="#2980b9" fillOpacity={0.12} />
+            <text x={W - padR + 4} y={(yEzTop + yEzBot) / 2 + 3} fontSize={9} fill="#2980b9">ENTRADA</text>
+            <line x1={padL} x2={W - padR} y1={y(sl)} y2={y(sl)} stroke="#c0392b" strokeWidth={1.5} strokeDasharray="6 3" />
+            <text x={W - padR + 4} y={y(sl) + 3} fontSize={9} fill="#c0392b">SL {sl}</text>
+            {tp.map((v: number, k: number) => (<g key={k}>
+              <line x1={padL} x2={W - padR} y1={y(v)} y2={y(v)} stroke="#1e824c" strokeWidth={1.3} strokeDasharray="6 3" />
+              <text x={W - padR + 4} y={y(v) + 3} fontSize={9} fill="#1e824c">TP{k + 1} {v}</text>
+            </g>))}
+          </g>);
         })()}
 
         {support.map((s: any, k: number) => (
-          <line key={`s${k}`} x1={padL} x2={W - padR} y1={y(s.level)} y2={y(s.level)} stroke="#1e824c" strokeWidth={0.7} strokeDasharray="2 3" opacity={0.4} />
+          <line key={`s${k}`} x1={padL} x2={W - padR} y1={y(s.level)} y2={y(s.level)} stroke="#1e824c" strokeWidth={0.7} strokeDasharray="2 3" opacity={0.35} />
         ))}
         {resistance.map((r: any, k: number) => (
-          <line key={`r${k}`} x1={padL} x2={W - padR} y1={y(r.level)} y2={y(r.level)} stroke="#c0392b" strokeWidth={0.7} strokeDasharray="2 3" opacity={0.4} />
+          <line key={`r${k}`} x1={padL} x2={W - padR} y1={y(r.level)} y2={y(r.level)} stroke="#c0392b" strokeWidth={0.7} strokeDasharray="2 3" opacity={0.35} />
         ))}
 
         {/* Velas */}
@@ -139,16 +144,23 @@ export default function IntradayChart() {
           </g>);
         })}
 
-        {/* Elliott */}
+        {/* Elliott: ZigZag + impulso 1-5 (morado) + corrección ABC (naranja) */}
         {showElliott && zz.length > 1 && (
           <path d={zz.map((z: any, i: number) => `${i === 0 ? "M" : "L"} ${x(tIndex[z.time] ?? 0)} ${y(z.price)}`).join(" ")}
-                fill="none" stroke="#8e44ad" strokeWidth={1.3} opacity={0.7} />
+                fill="none" stroke="#8e44ad" strokeWidth={1.3} opacity={0.6} />
         )}
         {showElliott && waves.map((w: any, k: number) => {
           const i = tIndex[w.time]; if (i == null) return null;
           return (<g key={`w${k}`}>
             <circle cx={x(i)} cy={y(w.price)} r={4} fill="#8e44ad" />
             <text x={x(i)} y={y(w.price) - 9} fontSize={13} fontWeight={700} fill="#8e44ad" textAnchor="middle">{w.label}</text>
+          </g>);
+        })}
+        {showElliott && abc.map((w: any, k: number) => {
+          const i = tIndex[w.time]; if (i == null) return null;
+          return (<g key={`abc${k}`}>
+            <circle cx={x(i)} cy={y(w.price)} r={4} fill="#e67e22" />
+            <text x={x(i)} y={y(w.price) + 16} fontSize={13} fontWeight={700} fill="#e67e22" textAnchor="middle">{w.label}</text>
           </g>);
         })}
 
@@ -169,14 +181,18 @@ export default function IntradayChart() {
 
   const sessionDate = data?.candles_ohlc?.length ? fecha(data.candles_ohlc[0].time) : null;
   const setup = data?.trade_setup;
+  const abcFound = data?.elliott?.abc?.found;
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", fontFamily: "system-ui" }}>
       <div style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "end", flexWrap: "wrap" }}>
         <label>
           <div style={{ fontSize: 12, color: "#666" }}>Ticker</div>
-          <input value={ticker} onChange={(e) => setTicker(e.target.value.toUpperCase())}
-            style={{ padding: 8, width: 90, border: "1px solid #ddd", borderRadius: 6 }} />
+          <select value={ticker} onChange={(e) => setTicker(e.target.value)}
+            style={{ padding: 9, minWidth: 100, border: "1px solid #ddd", borderRadius: 6, fontSize: 14 }}>
+            {models.length === 0 && <option value="">Cargando…</option>}
+            {models.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
         </label>
         <label>
           <div style={{ fontSize: 12, color: "#666" }}>Intervalo</div>
@@ -190,7 +206,7 @@ export default function IntradayChart() {
           <input type="number" value={days} min={1} max={10} onChange={(e) => setDays(Number(e.target.value))}
             style={{ padding: 8, width: 70, border: "1px solid #ddd", borderRadius: 6 }} />
         </label>
-        <button onClick={run} disabled={loading}
+        <button onClick={() => run(ticker)} disabled={loading || !ticker}
           style={{ padding: "10px 20px", background: "#111", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>
           {loading ? "Analizando..." : "Analizar intradía"}
         </button>
@@ -210,12 +226,12 @@ export default function IntradayChart() {
             <span><strong>{data.ticker}</strong> · ${data.last_price}</span>
             {sessionDate && <span>📅 {sessionDate}</span>}
             <span>Tendencia: <strong>{data.chartism.structure.trend}</strong></span>
-            {data.elliott?.elliott?.found && <span style={{ color: "#8e44ad" }}>🌊 Elliott {data.elliott.elliott.confidence}%</span>}
+            {data.elliott?.elliott?.found && <span style={{ color: "#8e44ad" }}>🌊 Impulso 1-5 ({data.elliott.elliott.confidence}%)</span>}
+            {abcFound && <span style={{ color: "#e67e22" }}>↩ Corrección A-B-C</span>}
           </div>
 
           {render()}
 
-          {/* ===== Tarjeta de setup operativo ===== */}
           {setup?.found ? (
             <div style={{ marginTop: 14, padding: 14, background: "#f7f9fb", borderRadius: 8, borderLeft: "4px solid #2980b9" }}>
               <div style={{ fontWeight: 700, marginBottom: 8 }}>
@@ -231,17 +247,17 @@ export default function IntradayChart() {
               <p style={{ fontSize: 11, color: "#b8860b", marginTop: 4 }}>⚠️ Guía educativa basada en Elliott+Fibonacci; no es recomendación de inversión.</p>
             </div>
           ) : (
-            <p style={{ fontSize: 12, color: "#999", marginTop: 10 }}>Sin setup operativo claro en esta sesión (estructura insuficiente).</p>
+            <p style={{ fontSize: 12, color: "#999", marginTop: 10 }}>Sin setup operativo claro en esta sesión.</p>
           )}
 
-          {/* ===== Panel PREMARKET ===== */}
           <PremarketPanel pm={pm} />
 
           <div style={{ display: "flex", gap: 16, marginTop: 12, fontSize: 12, color: "#555", flexWrap: "wrap" }}>
-            <span style={{ color: "#2980b9" }}>▮ zona entrada</span>
+            <span style={{ color: "#8e44ad" }}>● impulso 1-2-3-4-5</span>
+            <span style={{ color: "#e67e22" }}>● corrección A-B-C</span>
+            <span style={{ color: "#2980b9" }}>▮ entrada</span>
             <span style={{ color: "#c0392b" }}>— stop loss</span>
             <span style={{ color: "#1e824c" }}>— take profit</span>
-            <span style={{ color: "#8e44ad" }}>● ondas Elliott</span>
           </div>
         </>
       )}

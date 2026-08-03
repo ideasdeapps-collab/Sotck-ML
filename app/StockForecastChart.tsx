@@ -1,34 +1,30 @@
 "use client";
 
 /**
- * StockForecastChart.tsx — Predicción + Validación
- * ================================================
- * (1) El usuario ingresa los DÍAS a proyectar (input numérico).
- * (2) Dos vistas en la misma pestaña:
- *     • PROYECCIÓN (futuro): Histórico + XGBoost + MLP + XGBoost+Sentimiento +
- *       Mediana Monte Carlo con bandas P5–P95.
- *     • VALIDACIÓN (pasado): para los últimos N días, predicho-a-1-día de cada
- *       modelo vs. el precio REAL, con métricas de acierto (MAPE + dir.acc).
+ * StockForecastChart.tsx — Predicción + Validación + ZOOM
+ * =======================================================
+ * (1) El usuario ingresa los DÍAS a proyectar.
+ * (2) Zoom In / Zoom Out / Reset sobre el eje temporal (recorta la ventana
+ *     visible sin volver a llamar a la API).
+ * (3) Vistas: Proyección (futuro, 4 curvas) y Validación (predicho vs real).
  *
- * Endpoints (en paralelo):
- *   POST /forecast · GET /predict-mlp · GET /forecast-sentiment · GET /validate
+ * Endpoints (paralelo): POST /forecast · GET /predict-mlp · /forecast-sentiment · /validate
  * Env: NEXT_PUBLIC_ML_API_URL
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer,
 } from "recharts";
 
 const API_URL = process.env.NEXT_PUBLIC_ML_API_URL || "http://localhost:8000";
-
 type View = "proyeccion" | "validacion";
 
 export default function StockForecastChart() {
   const [models, setModels] = useState<string[]>([]);
   const [ticker, setTicker] = useState<string>("");
-  const [days, setDays] = useState<number>(21);       // (1) usuario ingresa días
+  const [days, setDays] = useState<number>(21);
   const [view, setView] = useState<View>("proyeccion");
 
   const [fwd, setFwd] = useState<any[]>([]);
@@ -36,10 +32,11 @@ export default function StockForecastChart() {
   const [sentiment, setSentiment] = useState<any>(null);
   const [riskNote, setRiskNote] = useState<string>("");
   const [hasMlp, setHasMlp] = useState(false);
-
   const [val, setVal] = useState<any[]>([]);
   const [valMetrics, setValMetrics] = useState<any>(null);
 
+  // Zoom: fracción visible (1 = todo). windowFrac<1 recorta desde la derecha.
+  const [zoom, setZoom] = useState(1);       // 1.0 = ver todo
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,43 +48,31 @@ export default function StockForecastChart() {
         const avail: string[] = j.available || [];
         setModels(avail);
         setTicker(avail.includes("TSM") ? "TSM" : avail[0] || "");
-      } catch {
-        setError("No se pudo cargar la lista de modelos (/models).");
-      }
+      } catch { setError("No se pudo cargar la lista de modelos (/models)."); }
     })();
   }, []);
 
-  useEffect(() => {
-    if (ticker) run(ticker, days);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker]);
+  useEffect(() => { if (ticker) run(ticker, days); /* eslint-disable-next-line */ }, [ticker]);
 
   async function run(tk: string, h: number) {
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setZoom(1);
     try {
       const [fRes, mRes, sRes, vRes] = await Promise.all([
-        fetch(`${API_URL}/forecast`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ticker: tk, horizon: h, n_sims: 10000 }),
-        }),
+        fetch(`${API_URL}/forecast`, { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ticker: tk, horizon: h, n_sims: 10000 }) }),
         fetch(`${API_URL}/predict-mlp?ticker=${tk}&horizon=${h}`),
         fetch(`${API_URL}/forecast-sentiment?ticker=${tk}&horizon=${h}`),
         fetch(`${API_URL}/validate?ticker=${tk}&days=${Math.max(30, h * 2)}`),
       ]);
-
       if (!fRes.ok) throw new Error((await fRes.json()).detail || "Error en /forecast");
       const fj = await fRes.json();
 
-      // ---- Proyección (futuro) ----
       const rows: Record<string, any> = {};
       fj.prediction.history.forEach((hh: any) => (rows[hh.date] = { date: hh.date, historical: hh.close }));
       const sim = fj.simulation;
       fj.prediction.prediction.forEach((p: any, i: number) => {
-        rows[p.date] = {
-          ...(rows[p.date] || { date: p.date }),
-          xgb: p.close, median: sim.median[i],
-          band95Base: sim.p5[i], band95: sim.p95[i] - sim.p5[i],
-        };
+        rows[p.date] = { ...(rows[p.date] || { date: p.date }), xgb: p.close, median: sim.median[i],
+          band95Base: sim.p5[i], band95: sim.p95[i] - sim.p5[i] };
       });
       if (mRes.ok) {
         const mj = await mRes.json();
@@ -96,31 +81,32 @@ export default function StockForecastChart() {
       } else setHasMlp(false);
       if (sRes.ok) {
         const sj = await sRes.json();
-        (sj.ml_plus_sentiment || []).forEach((p: any) =>
-          (rows[p.date] = { ...(rows[p.date] || { date: p.date }), mlSent: p.close }));
+        (sj.ml_plus_sentiment || []).forEach((p: any) => (rows[p.date] = { ...(rows[p.date] || { date: p.date }), mlSent: p.close }));
         setSentiment(sj.sentiment || null); setRiskNote(sj.risk_note || "");
       } else { setSentiment(null); setRiskNote(""); }
       setFwd(Object.values(rows).sort((a: any, b: any) => a.date.localeCompare(b.date)));
       setSummary({ ...sim.terminal });
 
-      // ---- Validación (pasado, predicho vs real) ----
-      if (vRes.ok) {
-        const vj = await vRes.json();
-        setVal(vj.series || []);
-        setValMetrics(vj.metrics || null);
-      } else { setVal([]); setValMetrics(null); }
-    } catch (e: any) {
-      setError(e.message); setFwd([]); setSummary(null);
-    } finally {
-      setLoading(false);
-    }
+      if (vRes.ok) { const vj = await vRes.json(); setVal(vj.series || []); setValMetrics(vj.metrics || null); }
+      else { setVal([]); setValMetrics(null); }
+    } catch (e: any) { setError(e.message); setFwd([]); setSummary(null); }
+    finally { setLoading(false); }
   }
 
+  // Aplica zoom: muestra la fracción final de los datos (los más recientes/futuros)
+  const fwdZoom = useMemo(() => {
+    if (zoom >= 1 || fwd.length === 0) return fwd;
+    const keep = Math.max(5, Math.round(fwd.length * zoom));
+    return fwd.slice(fwd.length - keep);
+  }, [fwd, zoom]);
+
   const divergence = riskNote.includes("Divergencia");
+  const zoomIn = () => setZoom((z) => Math.max(0.1, +(z * 0.7).toFixed(3)));
+  const zoomOut = () => setZoom((z) => Math.min(1, +(z / 0.7).toFixed(3)));
+  const zoomReset = () => setZoom(1);
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", fontFamily: "system-ui" }}>
-      {/* Controles */}
       <div style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "end", flexWrap: "wrap" }}>
         <label>
           <div style={{ fontSize: 12, color: "#666" }}>Ticker</div>
@@ -137,12 +123,20 @@ export default function StockForecastChart() {
             style={{ padding: 8, width: 130, border: "1px solid #ddd", borderRadius: 6 }} />
         </label>
         <button onClick={() => ticker && run(ticker, days)} disabled={loading || !ticker}
-          style={{ padding: "10px 18px", background: "#2c3e50", color: "#fff",
-                   border: "none", borderRadius: 6, cursor: "pointer" }}>
+          style={{ padding: "10px 18px", background: "#2c3e50", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>
           {loading ? "Calculando…" : "↻ Calcular"}
         </button>
 
-        {/* Conmutador de vista */}
+        {/* Zoom (solo en Proyección) */}
+        {view === "proyeccion" && (
+          <div style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+            <span style={{ fontSize: 12, color: "#666" }}>Zoom:</span>
+            <ZoomBtn onClick={zoomIn} disabled={zoom <= 0.1}>＋</ZoomBtn>
+            <ZoomBtn onClick={zoomOut} disabled={zoom >= 1}>－</ZoomBtn>
+            <ZoomBtn onClick={zoomReset} disabled={zoom >= 1}>⟲</ZoomBtn>
+          </div>
+        )}
+
         <div style={{ marginLeft: "auto", display: "inline-flex", border: "1px solid #ddd", borderRadius: 8, overflow: "hidden" }}>
           {(["proyeccion", "validacion"] as View[]).map((v) => (
             <button key={v} onClick={() => setView(v)}
@@ -157,7 +151,7 @@ export default function StockForecastChart() {
 
       {error && <p style={{ color: "#c0392b" }}>⚠️ {error}</p>}
 
-      {/* ============ VISTA PROYECCIÓN ============ */}
+      {/* ===== PROYECCIÓN ===== */}
       {view === "proyeccion" && (
         <>
           {riskNote && (
@@ -170,8 +164,13 @@ export default function StockForecastChart() {
           )}
           {fwd.length > 0 && (
             <>
+              {zoom < 1 && (
+                <p style={{ fontSize: 11, color: "#2980b9", margin: "0 0 6px" }}>
+                  🔍 Mostrando el {Math.round(zoom * 100)}% más reciente ({fwdZoom.length} de {fwd.length} puntos) · pulsa ⟲ para ver todo
+                </p>
+              )}
               <ResponsiveContainer width="100%" height={420}>
-                <ComposedChart data={fwd} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+                <ComposedChart data={fwdZoom} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
                   <XAxis dataKey="date" tick={{ fontSize: 10 }} minTickGap={30} />
                   <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11 }} width={60} />
@@ -193,22 +192,17 @@ export default function StockForecastChart() {
                   <Stat label="Retorno esperado" value={`${(summary.expected_return * 100).toFixed(1)}%`} />
                 </div>
               )}
-              {!hasMlp && (
-                <p style={{ fontSize: 12, color: "#b8860b", marginTop: 8 }}>
-                  ⓘ {ticker} no tiene modelo MLP entrenado (curva verde oculta).
-                </p>
-              )}
+              {!hasMlp && <p style={{ fontSize: 12, color: "#b8860b", marginTop: 8 }}>ⓘ {ticker} no tiene modelo MLP entrenado (curva verde oculta).</p>}
             </>
           )}
         </>
       )}
 
-      {/* ============ VISTA VALIDACIÓN ============ */}
+      {/* ===== VALIDACIÓN ===== */}
       {view === "validacion" && (
         <>
           <p style={{ fontSize: 13, color: "#555", marginBottom: 10 }}>
             Cada punto es la <b>predicción a 1 día</b> de cada modelo vs. el <b>precio real</b>.
-            Mientras más pegada al negro, más acertó esa curva.
           </p>
           {val.length > 0 ? (
             <>
@@ -229,17 +223,21 @@ export default function StockForecastChart() {
                   <ModelCard title="Red Neuronal (MLP)" color="#16a085" m={valMetrics.mlp} />
                 </div>
               )}
-              <p style={{ fontSize: 11, color: "#999", marginTop: 12 }}>
-                ⓘ <b>Dir.Acc</b> = % de días que acertó la dirección (subir/bajar). <b>MAPE</b> = error medio del precio.
-                Un modelo &gt;50% en dirección tiene valor predictivo.
-              </p>
             </>
-          ) : (
-            <p style={{ fontSize: 13, color: "#999" }}>Sin datos de validación para {ticker}.</p>
-          )}
+          ) : <p style={{ fontSize: 13, color: "#999" }}>Sin datos de validación para {ticker}.</p>}
         </>
       )}
     </div>
+  );
+}
+
+function ZoomBtn({ children, onClick, disabled }: { children: any; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button onClick={onClick} disabled={disabled}
+      style={{ width: 34, height: 34, border: "1px solid #ddd", borderRadius: 6, cursor: disabled ? "default" : "pointer",
+               background: disabled ? "#f5f5f5" : "#fff", color: disabled ? "#bbb" : "#333", fontSize: 16 }}>
+      {children}
+    </button>
   );
 }
 
@@ -255,8 +253,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 function ModelCard({ title, color, m }: { title: string; color: string; m: any }) {
   if (!m) return (
     <div style={{ padding: 12, background: "#f7f7f8", borderRadius: 8, borderLeft: `4px solid ${color}` }}>
-      <div style={{ fontWeight: 600 }}>{title}</div>
-      <div style={{ fontSize: 12, color: "#999" }}>Sin modelo entrenado</div>
+      <div style={{ fontWeight: 600 }}>{title}</div><div style={{ fontSize: 12, color: "#999" }}>Sin modelo entrenado</div>
     </div>
   );
   return (
