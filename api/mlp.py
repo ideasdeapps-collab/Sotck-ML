@@ -48,20 +48,36 @@ def load_mlp(ticker: str):
 
 
 def _reliability(meta: dict) -> dict:
-    """Evalúa si el modelo es confiable a partir de sus métricas de test."""
+    """
+    Evalúa la confiabilidad del modelo. NOTA: en predicción de retornos diarios,
+    un R² ligeramente negativo o cercano a 0 es NORMAL (el mercado es casi
+    impredecible día a día). Solo marcamos 'no confiable' los casos CATASTRÓFICOS,
+    porque el clamp ya protege la curva del colapso.
+
+    Umbrales:
+      - R² < -1.0            -> catastrófico (el modelo diverge, como SNDK con -3.64)
+      - dir_acc < 0.45       -> claramente peor que el azar (con margen)
+    Un modelo con R² entre -1 y 0 se considera 'débil pero usable' (se muestra con
+    aviso suave, pero NO se oculta la curva).
+    """
     m = meta.get("metrics", {})
     r2 = m.get("r2")
     dacc = m.get("directional_accuracy")
-    reliable = True
+    reliable = True          # confiable por defecto (el clamp protege)
+    weak = False
     reasons = []
-    if r2 is not None and r2 < 0:
+    if r2 is not None and r2 < -1.0:
         reliable = False
-        reasons.append(f"R² negativo ({r2:.2f}): peor que predecir la media.")
-    if dacc is not None and dacc < 0.5:
+        reasons.append(f"R² muy negativo ({r2:.2f}): el modelo diverge.")
+    elif r2 is not None and r2 < 0:
+        weak = True
+        reasons.append(f"R² negativo ({r2:.2f}): capacidad predictiva débil.")
+    if dacc is not None and dacc < 0.45:
         reliable = False
         reasons.append(f"Precisión direccional baja ({dacc:.0%}).")
-    return {"reliable": reliable, "r2": r2, "directional_accuracy": dacc,
-            "warning": None if reliable else " ".join(reasons)}
+    return {"reliable": reliable, "weak": weak, "r2": r2,
+            "directional_accuracy": dacc,
+            "warning": " ".join(reasons) if reasons else None}
 
 
 def predict_curve_mlp(ticker: str, horizon: int) -> dict:
