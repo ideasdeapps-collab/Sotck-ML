@@ -1,6 +1,6 @@
 """
-main.py — API de ML (predicción, simulación, intradía, señales, técnico, MLP, validación)
-=========================================================================================
+main.py — API de ML (predicción, simulación, intradía, señales, técnico, MLP, validación, psicología)
+=====================================================================================================
 Endpoints:
     GET  /health · /models · /models-mlp
     GET  /backtest · /dashboard
@@ -8,6 +8,7 @@ Endpoints:
     GET  /forecast-sentiment · /technical
     GET  /predict-mlp                              ← curva RED NEURONAL (MLP)
     GET  /validate                                 ← predicho vs real (XGBoost y MLP)
+    GET  /psychology                               ← Índice de Psicología de Mercado (IPM)
     GET  /forecast-history
     POST /predict · /simulate · /forecast · /backfill-actuals
 
@@ -40,10 +41,11 @@ from sentiment import forecast_with_sentiment   # noqa: E402
 from technical import technical_analysis        # noqa: E402
 from mlp import predict_curve_mlp               # noqa: E402  ← curva red neuronal
 from validate import validate_models           # noqa: E402  ← predicho vs real
+from psychology import psychology_analysis      # noqa: E402  ← Índice de Psicología (IPM)
 import supabase_client as sb                     # noqa: E402
 
 ARTIFACT_DIR = Path(__file__).resolve().parent / "artifacts"
-app = FastAPI(title="Stock ML API", version="2.2.0")
+app = FastAPI(title="Stock ML API", version="2.3.0")
 
 ALLOWED = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(CORSMiddleware, allow_origins=ALLOWED, allow_credentials=True,
@@ -157,7 +159,7 @@ def get_backtest(ticker: str):
 def dashboard():
     rows = []
     for meta_path in sorted(ARTIFACT_DIR.glob("meta_*.json")):
-        if meta_path.stem.startswith("meta_mlp_"):
+        if meta_path.stem.startswith("meta_mlp_") or meta_path.stem.startswith("meta_psych_"):
             continue
         t = meta_path.stem.replace("meta_", "")
         with open(meta_path) as f:
@@ -239,6 +241,18 @@ def validate(ticker: str, days: int = 60):
     """Validación 1-paso: predicho vs. real para XGBoost y MLP (últimos N días)."""
     try:
         return validate_models(ticker, days)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/psychology")
+def psychology(ticker: str, horizon: int = 21, sentiment: float = 0.0):
+    """Índice de Psicología de Mercado (IPM): oscilador + curva contrarian
+    directa (Opción A) + curva aprendida ML (Opción B, si hay modelo)."""
+    try:
+        return psychology_analysis(ticker, horizon, sentiment_score=sentiment)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e))
     except Exception as e:
