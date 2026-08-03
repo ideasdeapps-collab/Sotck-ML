@@ -1,7 +1,7 @@
 """
 psychology.py — Índice de Psicología de Mercado (IPM) + predicción conductual
 =============================================================================
-Implementa el algoritmo del documento técnico IPM:
+Implementa el algoritmo del documento IPM:
 
   7 SENSORES normalizados a [-1,+1]:
     S1 RSI (miedo/codicia) · S2 sentimiento · S3 manada(volumen) ·
@@ -16,8 +16,8 @@ Implementa el algoritmo del documento técnico IPM:
     Opción B (aprendida, ML):
         r̂_{t+N} = f(IPM, ΔIPM, IPM²)   con GradientBoosting entrenado
 
-El sentimiento (S2) es opcional: si se pasa un score externo (de Polygon news),
-se usa; si no, S2=0 y el resto de sensores siguen funcionando (todo es técnico).
+El sentimiento (S2) es opcional: si se pasa un score externo (Polygon news),
+se usa; si no, S2=0 y el resto de sensores siguen funcionando (todo técnico).
 """
 
 from __future__ import annotations
@@ -111,7 +111,7 @@ def _zone(ipm: float) -> str:
 # Opción A — Señal contrarian directa
 # --------------------------------------------------------------------------- #
 def contrarian_direct(ipm_last: float, last_close: float, dates: list[str],
-                      kappa: float = KAPPA, theta: float = THETA) -> list[dict]:
+                      kappa: float = KAPPA, theta: float = THETA):
     """
     Proyecta una curva desde last_close aplicando el retorno contrarian directo.
     Solo hay señal si |IPM|>θ; si no, la curva queda plana (psicología 'calla').
@@ -128,17 +128,13 @@ def contrarian_direct(ipm_last: float, last_close: float, dates: list[str],
 # --------------------------------------------------------------------------- #
 # Opción B — Modelo aprendido (ML)
 # --------------------------------------------------------------------------- #
-def _model_path(ticker: str) -> Path:
-    return ARTIFACT_DIR / f"psych_{ticker.upper()}.joblib"
-
-
 def load_psych_model(ticker: str):
-    p = _model_path(ticker)
+    p = ARTIFACT_DIR / f"psych_{ticker.upper()}.joblib"
     return joblib.load(p) if p.exists() else None
 
 
 def learned_curve(ticker: str, ipm_series: pd.Series, last_close: float,
-                  dates: list[str]) -> tuple[list[dict], dict] | tuple[None, None]:
+                  dates: list[str]):
     """
     Usa el modelo psych_<TICKER> (si existe) para proyectar el retorno a N días
     con features [IPM, ΔIPM, IPM²]. Aplica el retorno diariamente (suavizado).
@@ -156,7 +152,8 @@ def learned_curve(ticker: str, ipm_series: pd.Series, last_close: float,
     for d in dates:
         price *= float(np.exp(daily))
         out.append({"date": d, "close": round(price, 4)})
-    meta_path = ARTIFACT_DIR / f"psych_{ticker.upper()}.json"
+    # FIX: el nombre de metadatos coincide con el que guarda train_psych.py
+    meta_path = ARTIFACT_DIR / f"meta_psych_{ticker.upper()}.json"
     meta = json.load(open(meta_path)) if meta_path.exists() else {}
     return out, {"predicted_total_return": round(total_ret, 5), "meta": meta.get("metrics", {})}
 
