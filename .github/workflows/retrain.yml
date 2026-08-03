@@ -1,4 +1,4 @@
-name: Retrain models (XGBoost + MLP)
+name: Retrain models (XGBoost + MLP + Psychology)
 
 on:
   schedule:
@@ -44,7 +44,7 @@ jobs:
           fi
           echo "POLYGON_API_KEY presente (len=${#POLYGON_API_KEY})."
 
-      - name: Train (XGBoost + MLP) + backtest — rate-limit friendly
+      - name: Train (XGBoost + MLP + Psychology) + backtest — rate-limit friendly
         env:
           POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
         run: |
@@ -64,6 +64,9 @@ jobs:
               # Red neuronal (MLP) — reutiliza el diario cacheado, no gasta llamada extra
               python training/train_mlp.py --ticker "$T" --years "$YEARS" \
                 || echo "::warning::train_mlp falló para $T"
+              # Modelo psicológico (IPM Opción B) — también reutiliza el diario cacheado
+              python training/train_psych.py --ticker "$T" --years "$YEARS" --horizon 21 \
+                || echo "::warning::train_psych falló para $T"
               sleep 13
               python training/backtest.py --ticker "$T" --years "$YEARS" --test-days 120 \
                 || echo "::warning::backtest falló para $T"
@@ -93,6 +96,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "Sin cambios que commitear."
           else
-            git commit -m "chore: retrain XGBoost + MLP + backtest [skip ci]"
+            git commit -m "chore: retrain XGBoost + MLP + Psychology + backtest [skip ci]"
             git push
           fi
