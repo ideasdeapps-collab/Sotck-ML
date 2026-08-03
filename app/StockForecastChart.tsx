@@ -32,6 +32,7 @@ export default function StockForecastChart() {
   const [sentiment, setSentiment] = useState<any>(null);
   const [riskNote, setRiskNote] = useState<string>("");
   const [hasMlp, setHasMlp] = useState(false);
+  const [mlpWarning, setMlpWarning] = useState<string | null>(null);
   const [val, setVal] = useState<any[]>([]);
   const [valMetrics, setValMetrics] = useState<any>(null);
 
@@ -76,9 +77,17 @@ export default function StockForecastChart() {
       });
       if (mRes.ok) {
         const mj = await mRes.json();
-        mj.prediction.forEach((p: any) => (rows[p.date] = { ...(rows[p.date] || { date: p.date }), mlp: p.close }));
-        setHasMlp(true);
-      } else setHasMlp(false);
+        const rel = mj.reliability;
+        // Solo pintamos la curva MLP si el modelo es confiable (R²>=0 y dir.acc>=50%).
+        if (rel && rel.reliable === false) {
+          setHasMlp(false);
+          setMlpWarning(rel.warning || "El modelo MLP de este ticker no es confiable.");
+        } else {
+          mj.prediction.forEach((p: any) => (rows[p.date] = { ...(rows[p.date] || { date: p.date }), mlp: p.close }));
+          setHasMlp(true);
+          setMlpWarning(null);
+        }
+      } else { setHasMlp(false); setMlpWarning(null); }
       if (sRes.ok) {
         const sj = await sRes.json();
         (sj.ml_plus_sentiment || []).forEach((p: any) => (rows[p.date] = { ...(rows[p.date] || { date: p.date }), mlSent: p.close }));
@@ -192,7 +201,13 @@ export default function StockForecastChart() {
                   <Stat label="Retorno esperado" value={`${(summary.expected_return * 100).toFixed(1)}%`} />
                 </div>
               )}
-              {!hasMlp && <p style={{ fontSize: 12, color: "#b8860b", marginTop: 8 }}>ⓘ {ticker} no tiene modelo MLP entrenado (curva verde oculta).</p>}
+              {!hasMlp && (
+                <p style={{ fontSize: 12, color: mlpWarning ? "#c0392b" : "#b8860b", marginTop: 8 }}>
+                  {mlpWarning
+                    ? `⚠️ Curva MLP oculta para ${ticker}: ${mlpWarning} Reentrena el modelo o usa XGBoost.`
+                    : `ⓘ ${ticker} no tiene modelo MLP entrenado (curva verde oculta).`}
+                </p>
+              )}
             </>
           )}
         </>
