@@ -1,18 +1,15 @@
 "use client";
 
 /**
- * TabbedApp.tsx — Contenedor de pestañas
- * ======================================
- *   1) Predicción       -> StockForecastChart (rango 1D/5D/1M/6M + ticker
- *                          desplegable + ML+Sentimiento incluido)
- *   2) Intradía          -> IntradayChart   (eje X con hora + fecha)
- *   3) Señales           -> SignalsTab       (eje X con hora + fecha)
+ * TabbedApp.tsx — Contenedor de pestañas (con Psicología / IPM)
+ * ============================================================
+ *   1) Predicción       -> StockForecastChart (curvas incl. psicológicas A/B)
+ *   2) Intradía          -> IntradayChart
+ *   3) Señales           -> SignalsTab
  *   4) Técnico (Elliott) -> TechnicalTab
- *   5) Backtest          -> BacktestChart
- *   6) Panel             -> Dashboard
- *
- * Nota: la vista de "ML + Sentimiento" se integró dentro de Predicción,
- * por eso ya no aparece como pestaña independiente.
+ *   5) Psicología (IPM)  -> PsychologyTab    ← NUEVA
+ *   6) Backtest          -> BacktestChart
+ *   7) Panel             -> Dashboard
  */
 
 import { useState } from "react";
@@ -20,6 +17,7 @@ import StockForecastChart from "./StockForecastChart";
 import IntradayChart from "./IntradayChart";
 import SignalsTab from "./SignalsTab";
 import TechnicalTab from "./TechnicalTab";
+import PsychologyTab from "./PsychologyTab";
 import BacktestChart from "./BacktestChart";
 import Dashboard from "./Dashboard";
 
@@ -28,6 +26,7 @@ const TABS = [
   { id: "intraday", label: "📉 Intradía", node: <IntradayChart /> },
   { id: "signals", label: "🔔 Señales", node: <SignalsTab /> },
   { id: "technical", label: "🌊 Técnico (Elliott)", node: <TechnicalTab /> },
+  { id: "psychology", label: "🧠 Psicología (IPM)", node: <PsychologyTab /> },
   { id: "backtest", label: "🎯 Backtest", node: <BacktestChart /> },
   { id: "dashboard", label: "📊 Panel", node: <Dashboard /> },
 ];
