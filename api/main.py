@@ -155,7 +155,24 @@ def predict_curve(ticker: str, horizon: int) -> dict:
         except Exception as e:
             raise HTTPException(400, str(e))
 
-
+ @app.get("/price-cache")
+    def price_cache(ticker: str, days: int = 220):
+        """Precio real diario leído SOLO de la caché Supabase (sin Polygon).
+        Para mostrar la línea de precio real al elegir ticker, sin gastar cuota."""
+        if not price_store.enabled():
+            raise HTTPException(503, "Supabase no está configurado en el servidor.")
+        df = price_store.read_prices(ticker, years=max(1, days // 200 + 1))
+        if df is None or df.empty:
+            return {"ticker": ticker.upper(), "last_date": None, "history": []}
+        recent = df.tail(days)
+        return {
+            "ticker": ticker.upper(),
+            "last_date": pd.to_datetime(recent["date"].iloc[-1]).date().isoformat(),
+            "history": [
+                {"date": pd.to_datetime(d).date().isoformat(), "close": round(float(c), 4)}
+                for d, c in zip(recent["date"], recent["close"])
+            ],
+        }
 
 
 @app.get("/health")
