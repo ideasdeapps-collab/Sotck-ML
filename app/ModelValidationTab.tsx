@@ -3,15 +3,15 @@
 /**
  * ModelValidationTab.tsx — 📌 Validación de modelos
  * =================================================
- * FLUJO (según feedback de Luis):
- *   • Al elegir un TICKER → se cargan automáticamente sus snapshots guardados
- *     (lectura ligera a Supabase, SIN cálculo en vivo) y se muestra el MÁS RECIENTE.
- *   • Puedes navegar la lista de snapshots guardados en el selector.
- *   • «↻ Calcular en vivo» es OPCIONAL: genera una predicción nueva (7 curvas) que
- *     luego puedes guardar con 💾.
+ * FLUJO:
+ *   • Al elegir un TICKER → (a) se carga la línea "Precio REAL" desde la caché de
+ *     Supabase (/price-cache, SIN Polygon), y (b) se cargan los snapshots guardados
+ *     y se muestra el MÁS RECIENTE. Nada de cálculo pesado.
+ *   • «↻ Calcular en vivo» es OPCIONAL: genera una predicción nueva (7 curvas)
+ *     que luego puedes guardar con 💾.
  *
- * El precio REAL de un snapshot sale de su propio campo actual_close (backfilled),
- * así que ver un guardado NO gasta cómputo ni cuota de Polygon.
+ * EDICIÓN QUIRÚRGICA: useEffect en [ticker] → GET /price-cache → setRealHist /
+ * setRealLastDate. La línea negra aparece al elegir ticker, sin Polygon.
  *
  * Extras: Zoom X/Y independiente (recorta sin volver a llamar a la API).
  */
@@ -44,6 +44,10 @@ export default function ModelValidationTab() {
   const [livePoints, setLivePoints] = useState<any[]>([]); // preview en vivo (7 curvas)
   const [liveReal, setLiveReal] = useState<{ date: string; close: number }[]>([]); // real para vista live
 
+  // ── NUEVO: precio REAL desde la caché de Supabase (línea negra siempre visible) ──
+  const [realHist, setRealHist] = useState<{ date: string; close: number }[]>([]);
+  const [realLastDate, setRealLastDate] = useState<string>("");
+
   const [zoomX, setZoomX] = useState(1);
   const [zoomY, setZoomY] = useState(1);
 
@@ -64,7 +68,21 @@ export default function ModelValidationTab() {
     })();
   }, []);
 
-  // 2) Al elegir/cambiar TICKER → cargar snapshots guardados (auto, ligero).
+  // 2) Al cambiar TICKER → PRECIO REAL desde la caché de Supabase (sin Polygon).
+  useEffect(() => {
+    if (!ticker) { setRealHist([]); setRealLastDate(""); return; }
+    (async () => {
+      try {
+        const r = await fetch(`${API_URL}/price-cache?ticker=${ticker}&years=1`);
+        if (!r.ok) { setRealHist([]); setRealLastDate(""); return; }
+        const j = await r.json();
+        setRealHist(j.history || []);
+        setRealLastDate(j.last_date || "");
+      } catch { setRealHist([]); setRealLastDate(""); }
+    })();
+  }, [ticker]);
+
+  // 3) Al cambiar TICKER → cargar snapshots guardados (auto, ligero).
   useEffect(() => {
     if (ticker) loadHistory(ticker);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -80,13 +98,12 @@ export default function ModelValidationTab() {
       const j = await res.json();
       const rs = j.runs || [];
       setRuns(rs);
-      // Mostrar el snapshot MÁS RECIENTE por defecto (o nada si no hay)
       setViewSel(rs.length ? rs[0].run_id : "");
     } catch (e: any) { setError(e.message); setRuns([]); setViewSel(""); }
     finally { setLoadingHist(false); }
   }
 
-  // 3) Cálculo EN VIVO (opcional): genera las 7 curvas nuevas.
+  // 4) Cálculo EN VIVO (opcional): genera las 7 curvas nuevas.
   async function calcLive(tk: string) {
     setLoadingLive(true); setError(null); setMsg(null); setZoomX(1); setZoomY(1);
     try {
@@ -120,7 +137,7 @@ export default function ModelValidationTab() {
         ((pj.learned || {})?.curve || []).forEach((p: any) => (byDate[p.date] = { ...(byDate[p.date] || { target_date: p.date }), psy_b: p.close }));
       }
       setLivePoints(Object.values(byDate).sort((a: any, b: any) => a.target_date.localeCompare(b.target_date)));
-      setViewSel("live");   // saltar a la vista en vivo recién calculada
+      setViewSel("live");
     } catch (e: any) { setError(e.message); setLivePoints([]); }
     finally { setLoadingLive(false); }
   }
@@ -135,7 +152,6 @@ export default function ModelValidationTab() {
       if (!res.ok) throw new Error((await res.json()).detail || "Error al guardar");
       const j = await res.json();
       setMsg(`✅ Predicción congelada (${j.points} puntos, 7 curvas). id ${String(j.run_id).slice(0, 8)}…`);
-      // Recargar snapshots y mostrar el recién guardado
       const hRes = await fetch(`${API_URL}/forecast-history?ticker=${ticker}&limit_runs=30`);
       if (hRes.ok) { const rs = (await hRes.json()).runs || []; setRuns(rs); setViewSel(j.run_id); setZoomX(1); setZoomY(1); }
     } catch (e: any) { setError(e.message); }
@@ -146,21 +162,20 @@ export default function ModelValidationTab() {
   const activeRun = useMemo(() => runs.find((r) => r.run_id === viewSel) || null, [runs, viewSel]);
   const frozenDate = isLive ? null : activeRun?.run_date;
 
-  // Puntos + precio real según la vista activa
   const activePoints = isLive ? livePoints : (activeRun?.points || []);
 
+  // Precio real por fecha: BASE = caché de Supabase (realHist) + overlay de la vista
   const realByDate = useMemo(() => {
     const m: Record<string, number> = {};
+    realHist.forEach((p) => (m[p.date] = p.close));           // base: caché (siempre)
     if (isLive) {
       liveReal.forEach((p) => (m[p.date] = p.close));
     } else {
-      // Snapshot guardado: el precio real es su propio actual_close (backfilled)
       (activeRun?.points || []).forEach((p: any) => { if (p.actual_close != null) m[p.target_date] = p.actual_close; });
     }
     return m;
-  }, [isLive, liveReal, activeRun]);
+  }, [realHist, isLive, liveReal, activeRun]);
 
-  // Serie completa
   const fullSeries = useMemo(() => {
     const byDate: Record<string, any> = {};
     Object.entries(realByDate).forEach(([d, v]) => (byDate[d] = { date: d, actual: v }));
@@ -175,14 +190,12 @@ export default function ModelValidationTab() {
     return Object.values(byDate).sort((a: any, b: any) => a.date.localeCompare(b.date));
   }, [realByDate, activePoints]);
 
-  // Zoom X: recorta a la fracción final de puntos
   const series = useMemo(() => {
     if (zoomX >= 1 || fullSeries.length === 0) return fullSeries;
     const keep = Math.max(5, Math.round(fullSeries.length * zoomX));
     return fullSeries.slice(fullSeries.length - keep);
   }, [fullSeries, zoomX]);
 
-  // Zoom Y: dominio recortado alrededor del punto medio
   const yDomain = useMemo<[any, any]>(() => {
     if (zoomY >= 1) return ["auto", "auto"];
     const vals: number[] = [];
@@ -212,7 +225,6 @@ export default function ModelValidationTab() {
   }, [activePoints, realByDate]);
 
   const evalCount = metrics.evalN;
-  const hasSelection = viewSel !== "";
   const zXin = () => setZoomX((z) => Math.max(0.1, +(z * 0.7).toFixed(3)));
   const zXout = () => setZoomX((z) => Math.min(1, +(z / 0.7).toFixed(3)));
   const zYin = () => setZoomY((z) => Math.max(0.1, +(z * 0.7).toFixed(3)));
@@ -254,7 +266,7 @@ export default function ModelValidationTab() {
         <select value={viewSel} onChange={(e) => { setViewSel(e.target.value); setZoomX(1); setZoomY(1); }}
           disabled={loadingHist}
           style={{ padding: 8, minWidth: 340, border: "1px solid #ddd", borderRadius: 6, fontSize: 13 }}>
-          {runs.length === 0 && <option value="">— sin snapshots guardados —</option>}
+          {runs.length === 0 && <option value="">— solo precio real (sin snapshots) —</option>}
           {livePoints.length > 0 && <option value="live">🟢 En vivo (recién calculado, sin guardar)</option>}
           {runs.map((r) => (
             <option key={r.run_id} value={r.run_id}>
@@ -263,6 +275,7 @@ export default function ModelValidationTab() {
           ))}
         </select>
         {loadingHist && <span style={{ fontSize: 12, color: "#888" }}>Cargando snapshots…</span>}
+        {realLastDate && <span style={{ fontSize: 12, color: "#888" }}>Precio real hasta <b>{realLastDate}</b></span>}
 
         {series.length > 0 && (
           <div style={{ display: "inline-flex", gap: 8, alignItems: "center", marginLeft: "auto" }}>
@@ -290,20 +303,20 @@ export default function ModelValidationTab() {
         </p>
       )}
 
-      {/* Estado vacío: ticker sin snapshots y sin cálculo en vivo */}
-      {!loadingHist && runs.length === 0 && livePoints.length === 0 && !error && (
+      {/* Estado vacío: ni precio real ni snapshots ni cálculo en vivo */}
+      {!loadingHist && realHist.length === 0 && runs.length === 0 && livePoints.length === 0 && !error && (
         <div style={{ padding: "56px 20px", textAlign: "center", background: "#f7f9fb",
                       borderRadius: 12, border: "1px dashed #d5dce3", color: "#7f8c8d", marginTop: 6 }}>
           <div style={{ fontSize: 34, marginBottom: 8 }}>📌</div>
           <div style={{ fontSize: 15, fontWeight: 600, color: "#5a6b7b" }}>
-            {ticker ? `No hay predicciones guardadas para ${ticker}` : "Elige un ticker"}
+            {ticker ? `Sin datos para ${ticker}` : "Elige un ticker"}
           </div>
           <div style={{ fontSize: 13, marginTop: 4 }}>Pulsa «↻ Calcular en vivo» y luego 💾 para guardar tu primera predicción.</div>
         </div>
       )}
 
       {/* Gráfica */}
-      {hasSelection && series.length > 0 && (
+      {series.length > 0 && (
         <>
           <ResponsiveContainer width="100%" height={430}>
             <ComposedChart data={series} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
@@ -327,9 +340,11 @@ export default function ModelValidationTab() {
           <div style={{ marginTop: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
               Acierto por modelo (predicho vs. real){" "}
-              {evalCount === 0
+              {activePoints.length === 0
+                ? <span style={{ color: "#888", fontWeight: 400 }}>— elige un snapshot o calcula en vivo para comparar</span>
+                : evalCount === 0
                 ? <span style={{ color: "#b8860b", fontWeight: 400 }}>
-                    — {isLive ? "vista en vivo: las fechas predichas son futuras, aún sin real que comparar" : "el precio real aún no alcanza las fechas predichas (o falta el backfill)"}
+                    — {isLive ? "vista en vivo: las fechas predichas son futuras, aún sin real que comparar" : "el precio real aún no alcanza las fechas predichas"}
                   </span>
                 : <span style={{ color: "#888", fontWeight: 400 }}>({evalCount} días ya ocurridos)</span>}
             </div>
@@ -369,9 +384,9 @@ export default function ModelValidationTab() {
           </div>
 
           <p style={{ fontSize: 11, color: "#999", marginTop: 12 }}>
-            ⓘ Al elegir el ticker se muestra tu último snapshot guardado. La predicción está <b>congelada</b>:
-            no cambia aunque recalcules. «Calcular en vivo» genera una nueva para guardar. Menor MAPE = modelo
-            más preciso. No es recomendación de inversión.
+            ⓘ La línea negra «Precio REAL» viene de la caché de Supabase y aparece al elegir el ticker.
+            La predicción está <b>congelada</b>: no cambia aunque recalcules. Menor MAPE = modelo más
+            preciso. No es recomendación de inversión.
           </p>
         </>
       )}
