@@ -1,17 +1,19 @@
 "use client";
 
 /**
- * ModelValidationTab.tsx — 📌 Validación de modelos (WYSIWYG)
- * ==========================================================
- *   • Muestra EN VIVO las 7 curvas de predicción + el precio REAL antes de guardar.
- *   • 💾 Guardar predicción → congela exactamente ese preview.
- *   • Selector para ver snapshots pasados y compararlos contra el real.
+ * ModelValidationTab.tsx — 📌 Validación de modelos
+ * =================================================
+ * FLUJO (según feedback de Luis):
+ *   • Al elegir un TICKER → se cargan automáticamente sus snapshots guardados
+ *     (lectura ligera a Supabase, SIN cálculo en vivo) y se muestra el MÁS RECIENTE.
+ *   • Puedes navegar la lista de snapshots guardados en el selector.
+ *   • «↻ Calcular en vivo» es OPCIONAL: genera una predicción nueva (7 curvas) que
+ *     luego puedes guardar con 💾.
  *
- * CAMBIOS UX:
- *   1) El cálculo NO se dispara solo al cambiar el ticker; solo se pobla el
- *      desplegable. Nada se calcula hasta pulsar «↻ Calcular en vivo».
- *   2) Zoom independiente de eje X y eje Y (＋/－ por eje) + ⟲ Reset, que recorta
- *      la ventana visible sin volver a llamar a la API.
+ * El precio REAL de un snapshot sale de su propio campo actual_close (backfilled),
+ * así que ver un guardado NO gasta cómputo ni cuota de Polygon.
+ *
+ * Extras: Zoom X/Y independiente (recorta sin volver a llamar a la API).
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -37,25 +39,21 @@ export default function ModelValidationTab() {
   const [ticker, setTicker] = useState<string>("");
   const [horizon, setHorizon] = useState(30);
 
-  const [realHist, setRealHist] = useState<{ date: string; close: number }[]>([]);
-  const [realLastDate, setRealLastDate] = useState<string>("");
-  const [livePoints, setLivePoints] = useState<any[]>([]);
-  const [liveBase, setLiveBase] = useState<number | null>(null);
-
   const [runs, setRuns] = useState<any[]>([]);
-  const [viewSel, setViewSel] = useState<string>("live");
-  const [calculated, setCalculated] = useState(false);   // ¿ya se calculó?
+  const [viewSel, setViewSel] = useState<string>("");     // run_id o "live"
+  const [livePoints, setLivePoints] = useState<any[]>([]); // preview en vivo (7 curvas)
+  const [liveReal, setLiveReal] = useState<{ date: string; close: number }[]>([]); // real para vista live
 
-  // Zoom independiente por eje (1 = ver todo). <1 recorta.
   const [zoomX, setZoomX] = useState(1);
   const [zoomY, setZoomY] = useState(1);
 
-  const [loading, setLoading] = useState(false);
+  const [loadingHist, setLoadingHist] = useState(false);   // cargando snapshots
+  const [loadingLive, setLoadingLive] = useState(false);   // calculando en vivo
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
-  // SOLO poblar el desplegable de tickers (NO calcula nada).
+  // 1) Poblar el desplegable de tickers (sin calcular nada).
   useEffect(() => {
     (async () => {
       try {
@@ -66,26 +64,44 @@ export default function ModelValidationTab() {
     })();
   }, []);
 
-  async function loadAll(tk: string) {
-    setLoading(true); setError(null); setViewSel("live"); setZoomX(1); setZoomY(1);
+  // 2) Al elegir/cambiar TICKER → cargar snapshots guardados (auto, ligero).
+  useEffect(() => {
+    if (ticker) loadHistory(ticker);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticker]);
+
+  async function loadHistory(tk: string) {
+    setLoadingHist(true); setError(null); setMsg(null);
+    setLivePoints([]); setLiveReal([]); setZoomX(1); setZoomY(1);
     try {
-      const [fRes, mRes, sRes, pRes, hRes] = await Promise.all([
+      const res = await fetch(`${API_URL}/forecast-history?ticker=${tk}&limit_runs=30`);
+      if (res.status === 503) throw new Error("Supabase no está configurado en el servidor.");
+      if (!res.ok) throw new Error((await res.json()).detail || "Error al leer snapshots");
+      const j = await res.json();
+      const rs = j.runs || [];
+      setRuns(rs);
+      // Mostrar el snapshot MÁS RECIENTE por defecto (o nada si no hay)
+      setViewSel(rs.length ? rs[0].run_id : "");
+    } catch (e: any) { setError(e.message); setRuns([]); setViewSel(""); }
+    finally { setLoadingHist(false); }
+  }
+
+  // 3) Cálculo EN VIVO (opcional): genera las 7 curvas nuevas.
+  async function calcLive(tk: string) {
+    setLoadingLive(true); setError(null); setMsg(null); setZoomX(1); setZoomY(1);
+    try {
+      const [fRes, mRes, sRes, pRes] = await Promise.all([
         fetch(`${API_URL}/forecast`, { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ticker: tk, horizon, n_sims: 10000, save: false }) }),
         fetch(`${API_URL}/predict-mlp?ticker=${tk}&horizon=${horizon}`),
         fetch(`${API_URL}/forecast-sentiment?ticker=${tk}&horizon=${horizon}`),
         fetch(`${API_URL}/psychology?ticker=${tk}&horizon=${horizon}`),
-        fetch(`${API_URL}/forecast-history?ticker=${tk}&limit_runs=20`),
       ]);
-
       if (!fRes.ok) throw new Error((await fRes.json()).detail || "Error en /forecast");
       const fj = await fRes.json();
       const pred = fj.prediction; const sim = fj.simulation;
 
-      const hist = (pred.history || []).map((h: any) => ({ date: h.date, close: h.close }));
-      setRealHist(hist);
-      setRealLastDate(hist.length ? hist[hist.length - 1].date : "");
-      setLiveBase(pred.last_close);
+      setLiveReal((pred.history || []).map((h: any) => ({ date: h.date, close: h.close })));
 
       const byDate: Record<string, any> = {};
       pred.prediction.forEach((p: any, i: number) => {
@@ -104,12 +120,9 @@ export default function ModelValidationTab() {
         ((pj.learned || {})?.curve || []).forEach((p: any) => (byDate[p.date] = { ...(byDate[p.date] || { target_date: p.date }), psy_b: p.close }));
       }
       setLivePoints(Object.values(byDate).sort((a: any, b: any) => a.target_date.localeCompare(b.target_date)));
-
-      if (hRes.status === 503) throw new Error("Supabase no está configurado en el servidor.");
-      setRuns(hRes.ok ? ((await hRes.json()).runs || []) : []);
-      setCalculated(true);
+      setViewSel("live");   // saltar a la vista en vivo recién calculada
     } catch (e: any) { setError(e.message); setLivePoints([]); }
-    finally { setLoading(false); }
+    finally { setLoadingLive(false); }
   }
 
   async function saveSnapshot() {
@@ -122,31 +135,35 @@ export default function ModelValidationTab() {
       if (!res.ok) throw new Error((await res.json()).detail || "Error al guardar");
       const j = await res.json();
       setMsg(`✅ Predicción congelada (${j.points} puntos, 7 curvas). id ${String(j.run_id).slice(0, 8)}…`);
-      const hRes = await fetch(`${API_URL}/forecast-history?ticker=${ticker}&limit_runs=20`);
-      if (hRes.ok) { const runs2 = (await hRes.json()).runs || []; setRuns(runs2); setViewSel(j.run_id); setZoomX(1); setZoomY(1); }
+      // Recargar snapshots y mostrar el recién guardado
+      const hRes = await fetch(`${API_URL}/forecast-history?ticker=${ticker}&limit_runs=30`);
+      if (hRes.ok) { const rs = (await hRes.json()).runs || []; setRuns(rs); setViewSel(j.run_id); setZoomX(1); setZoomY(1); }
     } catch (e: any) { setError(e.message); }
     finally { setBusy(null); }
   }
 
+  const isLive = viewSel === "live";
+  const activeRun = useMemo(() => runs.find((r) => r.run_id === viewSel) || null, [runs, viewSel]);
+  const frozenDate = isLive ? null : activeRun?.run_date;
+
+  // Puntos + precio real según la vista activa
+  const activePoints = isLive ? livePoints : (activeRun?.points || []);
+
   const realByDate = useMemo(() => {
     const m: Record<string, number> = {};
-    realHist.forEach((p) => (m[p.date] = p.close));
+    if (isLive) {
+      liveReal.forEach((p) => (m[p.date] = p.close));
+    } else {
+      // Snapshot guardado: el precio real es su propio actual_close (backfilled)
+      (activeRun?.points || []).forEach((p: any) => { if (p.actual_close != null) m[p.target_date] = p.actual_close; });
+    }
     return m;
-  }, [realHist]);
+  }, [isLive, liveReal, activeRun]);
 
-  const activePoints = useMemo(() => {
-    if (viewSel === "live") return livePoints;
-    const run = runs.find((r) => r.run_id === viewSel);
-    return run ? (run.points || []) : [];
-  }, [viewSel, livePoints, runs]);
-
-  const activeRun = useMemo(() => runs.find((r) => r.run_id === viewSel) || null, [runs, viewSel]);
-  const frozenDate = viewSel === "live" ? null : activeRun?.run_date;
-
-  // Serie completa (todas las fechas)
+  // Serie completa
   const fullSeries = useMemo(() => {
     const byDate: Record<string, any> = {};
-    realHist.forEach((p) => (byDate[p.date] = { date: p.date, actual: p.close }));
+    Object.entries(realByDate).forEach(([d, v]) => (byDate[d] = { date: d, actual: v }));
     activePoints.forEach((pt: any) => {
       byDate[pt.target_date] = {
         ...(byDate[pt.target_date] || { date: pt.target_date }),
@@ -156,16 +173,16 @@ export default function ModelValidationTab() {
       };
     });
     return Object.values(byDate).sort((a: any, b: any) => a.date.localeCompare(b.date));
-  }, [realHist, activePoints]);
+  }, [realByDate, activePoints]);
 
-  // Zoom X: recorta a la fracción final de puntos (más recientes/futuros)
+  // Zoom X: recorta a la fracción final de puntos
   const series = useMemo(() => {
     if (zoomX >= 1 || fullSeries.length === 0) return fullSeries;
     const keep = Math.max(5, Math.round(fullSeries.length * zoomX));
     return fullSeries.slice(fullSeries.length - keep);
   }, [fullSeries, zoomX]);
 
-  // Zoom Y: dominio recortado alrededor del punto medio del rango visible
+  // Zoom Y: dominio recortado alrededor del punto medio
   const yDomain = useMemo<[any, any]>(() => {
     if (zoomY >= 1) return ["auto", "auto"];
     const vals: number[] = [];
@@ -195,8 +212,7 @@ export default function ModelValidationTab() {
   }, [activePoints, realByDate]);
 
   const evalCount = metrics.evalN;
-  const isLive = viewSel === "live";
-
+  const hasSelection = viewSel !== "";
   const zXin = () => setZoomX((z) => Math.max(0.1, +(z * 0.7).toFixed(3)));
   const zXout = () => setZoomX((z) => Math.min(1, +(z / 0.7).toFixed(3)));
   const zYin = () => setZoomY((z) => Math.max(0.1, +(z * 0.7).toFixed(3)));
@@ -216,150 +232,147 @@ export default function ModelValidationTab() {
           </select>
         </label>
         <label>
-          <div style={{ fontSize: 12, color: "#666" }}>Días a proyectar</div>
+          <div style={{ fontSize: 12, color: "#666" }}>Días a proyectar (en vivo)</div>
           <input type="number" value={horizon} min={5} max={252}
             onChange={(e) => setHorizon(Math.max(5, Number(e.target.value)))}
-            style={{ padding: 8, width: 130, border: "1px solid #ddd", borderRadius: 6 }} />
+            style={{ padding: 8, width: 150, border: "1px solid #ddd", borderRadius: 6 }} />
         </label>
-        <button onClick={() => ticker && loadAll(ticker)} disabled={loading || !ticker}
+        <button onClick={() => ticker && calcLive(ticker)} disabled={loadingLive || !ticker}
           style={{ padding: "10px 16px", background: "#2c3e50", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>
-          {loading ? "Calculando…" : "↻ Calcular en vivo"}
+          {loadingLive ? "Calculando…" : "↻ Calcular en vivo"}
         </button>
         <button onClick={saveSnapshot} disabled={!!busy || !ticker || livePoints.length === 0}
-          style={{ padding: "10px 16px", background: "#8e44ad", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}
-          title="Congela exactamente lo que ves en la vista 'En vivo'">
+          style={{ padding: "10px 16px", background: "#8e44ad", color: "#fff", border: "none", borderRadius: 6, cursor: livePoints.length === 0 ? "not-allowed" : "pointer" }}
+          title="Congela la predicción calculada en vivo">
           {busy === "save" ? "Guardando…" : "💾 Guardar esta predicción"}
         </button>
       </div>
 
-      {/* Estado vacío */}
-      {!calculated && !loading && !error && (
-        <div style={{ padding: "60px 20px", textAlign: "center", background: "#f7f9fb",
-                      borderRadius: 12, border: "1px dashed #d5dce3", color: "#7f8c8d", marginTop: 4 }}>
+      {/* Selector de snapshot + Zoom */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, color: "#666" }}>Ver:</span>
+        <select value={viewSel} onChange={(e) => { setViewSel(e.target.value); setZoomX(1); setZoomY(1); }}
+          disabled={loadingHist}
+          style={{ padding: 8, minWidth: 340, border: "1px solid #ddd", borderRadius: 6, fontSize: 13 }}>
+          {runs.length === 0 && <option value="">— sin snapshots guardados —</option>}
+          {livePoints.length > 0 && <option value="live">🟢 En vivo (recién calculado, sin guardar)</option>}
+          {runs.map((r) => (
+            <option key={r.run_id} value={r.run_id}>
+              📌 {r.run_date} · {r.points?.length || 0} pts · base ${r.last_close} · id {String(r.run_id).slice(0, 8)}
+            </option>
+          ))}
+        </select>
+        {loadingHist && <span style={{ fontSize: 12, color: "#888" }}>Cargando snapshots…</span>}
+
+        {series.length > 0 && (
+          <div style={{ display: "inline-flex", gap: 8, alignItems: "center", marginLeft: "auto" }}>
+            <span style={{ fontSize: 12, color: "#666" }}>Zoom X:</span>
+            <ZoomBtn onClick={zXin} disabled={zoomX <= 0.1}>＋</ZoomBtn>
+            <ZoomBtn onClick={zXout} disabled={zoomX >= 1}>－</ZoomBtn>
+            <span style={{ fontSize: 12, color: "#666", marginLeft: 4 }}>Zoom Y:</span>
+            <ZoomBtn onClick={zYin} disabled={zoomY <= 0.1}>＋</ZoomBtn>
+            <ZoomBtn onClick={zYout} disabled={zoomY >= 1}>－</ZoomBtn>
+            <ZoomBtn onClick={zReset} disabled={zoomX >= 1 && zoomY >= 1}>⟲</ZoomBtn>
+          </div>
+        )}
+      </div>
+
+      {(zoomX < 1 || zoomY < 1) && (
+        <p style={{ fontSize: 11, color: "#2980b9", margin: "0 0 4px" }}>
+          🔍 Zoom X {Math.round(zoomX * 100)}% · Zoom Y {Math.round(zoomY * 100)}% · ⟲ para ver todo
+        </p>
+      )}
+      {msg && <p style={{ color: "#1e824c", fontSize: 13 }}>{msg}</p>}
+      {error && <p style={{ color: "#c0392b", fontSize: 13 }}>⚠️ {error}</p>}
+      {isLive && (
+        <p style={{ fontSize: 12, color: "#8e44ad", margin: "2px 0 6px" }}>
+          🟢 Vista <b>EN VIVO</b> (sin guardar). Pulsa <b>💾</b> para congelarla.
+        </p>
+      )}
+
+      {/* Estado vacío: ticker sin snapshots y sin cálculo en vivo */}
+      {!loadingHist && runs.length === 0 && livePoints.length === 0 && !error && (
+        <div style={{ padding: "56px 20px", textAlign: "center", background: "#f7f9fb",
+                      borderRadius: 12, border: "1px dashed #d5dce3", color: "#7f8c8d", marginTop: 6 }}>
           <div style={{ fontSize: 34, marginBottom: 8 }}>📌</div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: "#5a6b7b" }}>Elige un ticker y pulsa «↻ Calcular en vivo»</div>
-          <div style={{ fontSize: 13, marginTop: 4 }}>Verás las 7 curvas y el precio real; luego podrás guardar la predicción.</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "#5a6b7b" }}>
+            {ticker ? `No hay predicciones guardadas para ${ticker}` : "Elige un ticker"}
+          </div>
+          <div style={{ fontSize: 13, marginTop: 4 }}>Pulsa «↻ Calcular en vivo» y luego 💾 para guardar tu primera predicción.</div>
         </div>
       )}
 
-      {calculated && (
+      {/* Gráfica */}
+      {hasSelection && series.length > 0 && (
         <>
-          {/* Selector de vista + Zoom X/Y */}
-          <div style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <span style={{ fontSize: 12, color: "#666" }}>Ver:</span>
-            <select value={viewSel} onChange={(e) => { setViewSel(e.target.value); setZoomX(1); setZoomY(1); }}
-              style={{ padding: 8, minWidth: 300, border: "1px solid #ddd", borderRadius: 6, fontSize: 13 }}>
-              <option value="live">🟢 En vivo (sin guardar) — lo que se guardaría</option>
-              {runs.map((r) => (
-                <option key={r.run_id} value={r.run_id}>
-                  📌 {r.run_date} · {r.points?.length || 0} pts · base ${r.last_close} · id {String(r.run_id).slice(0, 8)}
-                </option>
+          <ResponsiveContainer width="100%" height={430}>
+            <ComposedChart data={series} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
+              <XAxis dataKey="date" tick={{ fontSize: 10 }} minTickGap={30} />
+              <YAxis domain={yDomain} allowDataOverflow tick={{ fontSize: 11 }} width={60} />
+              <Tooltip /><Legend />
+              {frozenDate && <ReferenceLine x={frozenDate} stroke="#bbb" strokeDasharray="3 3"
+                label={{ value: "congelado", position: "top", fontSize: 9, fill: "#aaa" }} />}
+              <Area dataKey="bandBase" stackId="mc" stroke="none" fill="transparent" legendType="none" />
+              <Area dataKey="band" stackId="mc" stroke="none" fill="#3498db" fillOpacity={0.10} name="Banda P5–P95" />
+              {MODELS.map((m) => (
+                <Line key={m.key} dataKey={m.key} stroke={m.color} dot={false} strokeWidth={1.6}
+                      strokeDasharray="4 3" name={m.label} connectNulls />
               ))}
-            </select>
+              <Line dataKey="actual" stroke="#111" dot={false} strokeWidth={2.6} name="Precio REAL" connectNulls />
+            </ComposedChart>
+          </ResponsiveContainer>
 
-            {/* Zoom independiente por eje */}
-            {series.length > 0 && (
-              <div style={{ display: "inline-flex", gap: 8, alignItems: "center", marginLeft: "auto" }}>
-                <span style={{ fontSize: 12, color: "#666" }}>Zoom X:</span>
-                <ZoomBtn onClick={zXin} disabled={zoomX <= 0.1}>＋</ZoomBtn>
-                <ZoomBtn onClick={zXout} disabled={zoomX >= 1}>－</ZoomBtn>
-                <span style={{ fontSize: 12, color: "#666", marginLeft: 4 }}>Zoom Y:</span>
-                <ZoomBtn onClick={zYin} disabled={zoomY <= 0.1}>＋</ZoomBtn>
-                <ZoomBtn onClick={zYout} disabled={zoomY >= 1}>－</ZoomBtn>
-                <ZoomBtn onClick={zReset} disabled={zoomX >= 1 && zoomY >= 1}>⟲</ZoomBtn>
+          {/* Métricas */}
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+              Acierto por modelo (predicho vs. real){" "}
+              {evalCount === 0
+                ? <span style={{ color: "#b8860b", fontWeight: 400 }}>
+                    — {isLive ? "vista en vivo: las fechas predichas son futuras, aún sin real que comparar" : "el precio real aún no alcanza las fechas predichas (o falta el backfill)"}
+                  </span>
+                : <span style={{ color: "#888", fontWeight: 400 }}>({evalCount} días ya ocurridos)</span>}
+            </div>
+            {evalCount > 0 && (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: "#eef2f6" }}>
+                      <th style={{ textAlign: "left", padding: "8px 10px" }}>Modelo</th>
+                      <th style={{ textAlign: "right", padding: "8px 10px" }}>MAPE (error medio)</th>
+                      <th style={{ textAlign: "right", padding: "8px 10px" }}>Días evaluados</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {metrics.rows.slice().sort((a: any, b: any) => (a.mape ?? 9) - (b.mape ?? 9)).map((m: any) => (
+                      <tr key={m.key} style={{ borderBottom: "1px solid #eef2f6" }}>
+                        <td style={{ padding: "7px 10px" }}>
+                          <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: m.color, marginRight: 6 }} />
+                          {m.label}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "7px 10px", fontWeight: 600 }}>
+                          {m.mape == null ? "—" : `${(m.mape * 100).toFixed(2)}%`}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "7px 10px", color: "#888" }}>{m.n}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
+            )}
+            {metrics.coverage != null && evalCount > 0 && (
+              <p style={{ fontSize: 12, color: "#555", marginTop: 8 }}>
+                Cobertura banda Monte Carlo P5–P95: <b>{(metrics.coverage * 100).toFixed(0)}%</b> de los precios reales
+                cayeron dentro del rango previsto (ideal ≈ 90%).
+              </p>
             )}
           </div>
 
-          {realLastDate && <span style={{ fontSize: 12, color: "#888" }}>Precio real hasta <b>{realLastDate}</b></span>}
-          {(zoomX < 1 || zoomY < 1) && (
-            <p style={{ fontSize: 11, color: "#2980b9", margin: "4px 0 0" }}>
-              🔍 Zoom X {Math.round(zoomX * 100)}% · Zoom Y {Math.round(zoomY * 100)}% · ⟲ para ver todo
-            </p>
-          )}
-
-          {msg && <p style={{ color: "#1e824c", fontSize: 13 }}>{msg}</p>}
-          {error && <p style={{ color: "#c0392b", fontSize: 13 }}>⚠️ {error}</p>}
-
-          {isLive && livePoints.length > 0 && (
-            <p style={{ fontSize: 12, color: "#8e44ad", margin: "6px 0" }}>
-              🟢 Vista <b>EN VIVO</b>: estás viendo las 7 curvas recién calculadas. Pulsa <b>💾</b> para congelar exactamente esto.
-            </p>
-          )}
-
-          {/* Gráfica */}
-          {series.length > 0 && (
-            <>
-              <ResponsiveContainer width="100%" height={430}>
-                <ComposedChart data={series} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} minTickGap={30} />
-                  <YAxis domain={yDomain} allowDataOverflow tick={{ fontSize: 11 }} width={60} />
-                  <Tooltip /><Legend />
-                  {frozenDate && <ReferenceLine x={frozenDate} stroke="#bbb" strokeDasharray="3 3"
-                    label={{ value: "congelado", position: "top", fontSize: 9, fill: "#aaa" }} />}
-                  <Area dataKey="bandBase" stackId="mc" stroke="none" fill="transparent" legendType="none" />
-                  <Area dataKey="band" stackId="mc" stroke="none" fill="#3498db" fillOpacity={0.10} name="Banda P5–P95" />
-                  {MODELS.map((m) => (
-                    <Line key={m.key} dataKey={m.key} stroke={m.color} dot={false} strokeWidth={1.6}
-                          strokeDasharray="4 3" name={m.label} connectNulls />
-                  ))}
-                  <Line dataKey="actual" stroke="#111" dot={false} strokeWidth={2.6} name="Precio REAL" connectNulls />
-                </ComposedChart>
-              </ResponsiveContainer>
-
-              {/* Métricas */}
-              <div style={{ marginTop: 16 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
-                  Acierto por modelo (predicho vs. real){" "}
-                  {evalCount === 0
-                    ? <span style={{ color: "#b8860b", fontWeight: 400 }}>
-                        — {isLive ? "vista en vivo: las fechas predichas son futuras, aún sin real que comparar" : "el precio real aún no alcanza las fechas predichas"}
-                      </span>
-                    : <span style={{ color: "#888", fontWeight: 400 }}>({evalCount} días ya ocurridos)</span>}
-                </div>
-                {evalCount > 0 && (
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
-                      <thead>
-                        <tr style={{ background: "#eef2f6" }}>
-                          <th style={{ textAlign: "left", padding: "8px 10px" }}>Modelo</th>
-                          <th style={{ textAlign: "right", padding: "8px 10px" }}>MAPE (error medio)</th>
-                          <th style={{ textAlign: "right", padding: "8px 10px" }}>Días evaluados</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {metrics.rows.slice().sort((a: any, b: any) => (a.mape ?? 9) - (b.mape ?? 9)).map((m: any) => (
-                          <tr key={m.key} style={{ borderBottom: "1px solid #eef2f6" }}>
-                            <td style={{ padding: "7px 10px" }}>
-                              <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: m.color, marginRight: 6 }} />
-                              {m.label}
-                            </td>
-                            <td style={{ textAlign: "right", padding: "7px 10px", fontWeight: 600 }}>
-                              {m.mape == null ? "—" : `${(m.mape * 100).toFixed(2)}%`}
-                            </td>
-                            <td style={{ textAlign: "right", padding: "7px 10px", color: "#888" }}>{m.n}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                {metrics.coverage != null && evalCount > 0 && (
-                  <p style={{ fontSize: 12, color: "#555", marginTop: 8 }}>
-                    Cobertura banda Monte Carlo P5–P95: <b>{(metrics.coverage * 100).toFixed(0)}%</b> de los precios reales
-                    cayeron dentro del rango previsto (ideal ≈ 90%).
-                  </p>
-                )}
-              </div>
-
-              <p style={{ fontSize: 11, color: "#999", marginTop: 12 }}>
-                ⓘ El <b>precio real</b> (línea negra) siempre visible. En la vista <b>En vivo</b> ves lo que
-                guardarías; al guardar, queda <b>congelado</b> y la validación crece sola día a día. Menor MAPE =
-                modelo más preciso. No es recomendación de inversión.
-              </p>
-            </>
-          )}
+          <p style={{ fontSize: 11, color: "#999", marginTop: 12 }}>
+            ⓘ Al elegir el ticker se muestra tu último snapshot guardado. La predicción está <b>congelada</b>:
+            no cambia aunque recalcules. «Calcular en vivo» genera una nueva para guardar. Menor MAPE = modelo
+            más preciso. No es recomendación de inversión.
+          </p>
         </>
       )}
     </div>
