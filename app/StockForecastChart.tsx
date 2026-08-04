@@ -8,13 +8,10 @@
  * • Noticias de Polygon desplegadas abajo
  * • Zoom In/Out/Reset
  * • Vista Validación (predicho vs real)
- * • 🆕 SIMULADOR DE INVERSIÓN:
- *     - Dos modos: por CANTIDAD (acciones) o por MONTO ($)
- *     - Precio de entrada editable
- *     - Días de evaluación (acotados al horizonte)
- *     - Compara TODAS las curvas en una tabla (P&L por modelo)
- *     - Rango de riesgo Monte Carlo P5–P95 (mejor/peor caso)
- *     - Trayectoria del valor de la inversión superpuesta en la gráfica
+ * • SIMULADOR DE INVERSIÓN (cantidad/monto + comparativa + riesgo MC)
+ *
+ * CAMBIO UX: el cálculo NO se dispara solo al cambiar el ticker; solo se pobla
+ * el desplegable. Nada se calcula hasta pulsar «↻ Calcular».
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -29,7 +26,6 @@ type BuyMode = "cantidad" | "monto";
 
 const SENT_COLOR: Record<string, string> = { positive: "#1e824c", negative: "#c0392b", neutral: "#95a5a6" };
 
-// Definición de las curvas simulables (clave en 'rows' -> etiqueta + color)
 const CURVES = [
   { key: "xgb", label: "XGBoost", color: "#e67e22" },
   { key: "mlp", label: "Red Neuronal (MLP)", color: "#16a085" },
@@ -55,11 +51,10 @@ export default function StockForecastChart() {
   const [mlpWarning, setMlpWarning] = useState<string | null>(null);
   const [val, setVal] = useState<any[]>([]);
   const [valMetrics, setValMetrics] = useState<any>(null);
+  const [calculated, setCalculated] = useState(false);   // ¿ya se pulsó Calcular?
 
-  // Bandas Monte Carlo crudas (para el rango de riesgo del simulador)
   const [mc, setMc] = useState<{ p5: number[]; p95: number[]; median: number[] } | null>(null);
 
-  // Estado del SIMULADOR
   const [buyMode, setBuyMode] = useState<BuyMode>("monto");
   const [qty, setQty] = useState<number>(100);
   const [amount, setAmount] = useState<number>(10000);
@@ -71,6 +66,7 @@ export default function StockForecastChart() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // SOLO poblar el desplegable de tickers (NO calcula nada automáticamente).
   useEffect(() => {
     (async () => {
       try {
@@ -80,8 +76,6 @@ export default function StockForecastChart() {
       } catch { setError("No se pudo cargar la lista de modelos (/models)."); }
     })();
   }, []);
-
-  useEffect(() => { if (ticker) run(ticker, days); /* eslint-disable-next-line */ }, [ticker]);
 
   async function run(tk: string, h: number) {
     setLoading(true); setError(null); setZoom(1);
@@ -128,10 +122,10 @@ export default function StockForecastChart() {
       setFwd(merged);
       setSummary({ ...sim.terminal });
 
-      // Inicializa el simulador: precio de entrada = último cierre, evalDay = horizonte
       const lc = fj.prediction.last_close;
       setEntryPrice(Number(lc.toFixed(2)));
       setEvalDay(h);
+      setCalculated(true);
 
       if (vRes.ok) { const vj = await vRes.json(); setVal(vj.series || []); setValMetrics(vj.metrics || null); }
       else { setVal([]); setValMetrics(null); }
@@ -145,18 +139,15 @@ export default function StockForecastChart() {
     return fwd.slice(fwd.length - keep);
   }, [fwd, zoom]);
 
-  // Solo las filas de predicción (futuro) — las que tienen 'xgb'
   const predRows = useMemo(() => fwd.filter((r) => r.xgb != null || r.median != null), [fwd]);
   const maxEvalDay = predRows.length;
 
-  // Acciones efectivas según modo
   const shares = useMemo(() => {
     if (buyMode === "cantidad") return qty;
     return entryPrice > 0 ? amount / entryPrice : 0;
   }, [buyMode, qty, amount, entryPrice]);
   const cost = shares * entryPrice;
 
-  // Cálculo de P&L por curva al día 'evalDay'
   const simResults = useMemo(() => {
     if (!predRows.length || shares <= 0) return [];
     const idx = Math.min(Math.max(1, evalDay), predRows.length) - 1;
@@ -169,7 +160,6 @@ export default function StockForecastChart() {
     });
   }, [predRows, evalDay, shares, cost]);
 
-  // Rango de riesgo Monte Carlo P5–P95 al día evalDay
   const riskRange = useMemo(() => {
     if (!mc || !predRows.length) return null;
     const idx = Math.min(Math.max(1, evalDay), mc.p5.length) - 1;
@@ -182,13 +172,11 @@ export default function StockForecastChart() {
     };
   }, [mc, predRows, evalDay, shares, cost]);
 
-  // Trayectoria del valor de la inversión (curva mediana MC) para superponer
   const investmentPath = useMemo(() => {
     if (!showInvestment || !predRows.length || shares <= 0) return [];
     return predRows.map((r) => ({ date: r.date, invValue: r.median != null ? shares * r.median : null }));
   }, [showInvestment, predRows, shares]);
 
-  // Mezcla la trayectoria de inversión en los datos de la gráfica (eje secundario)
   const chartData = useMemo(() => {
     if (!showInvestment) return fwdZoom;
     const invByDate: Record<string, number> = {};
@@ -224,7 +212,7 @@ export default function StockForecastChart() {
           style={{ padding: "10px 18px", background: "#2c3e50", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>
           {loading ? "Calculando…" : "↻ Calcular"}
         </button>
-        {view === "proyeccion" && (
+        {view === "proyeccion" && calculated && (
           <div style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
             <span style={{ fontSize: 12, color: "#666" }}>Zoom:</span>
             <ZoomBtn onClick={zoomIn} disabled={zoom <= 0.1}>＋</ZoomBtn>
@@ -245,7 +233,12 @@ export default function StockForecastChart() {
 
       {error && <p style={{ color: "#c0392b" }}>⚠️ {error}</p>}
 
-      {view === "proyeccion" && (
+      {/* Estado vacío: aún no se ha calculado */}
+      {!calculated && !loading && !error && (
+        <EmptyState />
+      )}
+
+      {view === "proyeccion" && calculated && (
         <>
           {riskNote && (
             <div style={{ padding: 10, marginBottom: 12, borderRadius: 8, fontSize: 13,
@@ -299,7 +292,6 @@ export default function StockForecastChart() {
                   </label>
                 </div>
 
-                {/* Controles */}
                 <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap", marginTop: 12 }}>
                   <div>
                     <div style={{ fontSize: 12, color: "#666", marginBottom: 2 }}>Modo de compra</div>
@@ -346,7 +338,6 @@ export default function StockForecastChart() {
                   </label>
                 </div>
 
-                {/* Resumen de la posición */}
                 <div style={{ marginTop: 12, fontSize: 13, color: "#444" }}>
                   Posición: <b>{fmt(shares)}</b> acciones × <b>${fmt(entryPrice)}</b> ={" "}
                   <b>{money(cost)}</b> invertidos · evaluado al día <b>{evalDay}</b>
@@ -355,7 +346,6 @@ export default function StockForecastChart() {
                   )}
                 </div>
 
-                {/* Tabla comparativa de curvas */}
                 <div style={{ overflowX: "auto", marginTop: 12 }}>
                   <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
                     <thead>
@@ -388,7 +378,6 @@ export default function StockForecastChart() {
                   </table>
                 </div>
 
-                {/* Rango de riesgo Monte Carlo */}
                 {riskRange && (
                   <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
                     <RiskCard label="⬇ Peor caso (P5)" value={money(riskRange.worst)}
@@ -435,7 +424,7 @@ export default function StockForecastChart() {
         </>
       )}
 
-      {view === "validacion" && (
+      {view === "validacion" && calculated && (
         <>
           <p style={{ fontSize: 13, color: "#555", marginBottom: 10 }}>Cada punto es la <b>predicción a 1 día</b> de cada modelo vs. el <b>precio real</b>.</p>
           {val.length > 0 ? (
@@ -461,6 +450,18 @@ export default function StockForecastChart() {
           ) : <p style={{ fontSize: 13, color: "#999" }}>Sin datos de validación para {ticker}.</p>}
         </>
       )}
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div style={{ padding: "60px 20px", textAlign: "center", background: "#f7f9fb",
+                  borderRadius: 12, border: "1px dashed #d5dce3", color: "#7f8c8d",
+                  fontFamily: "system-ui", marginTop: 8 }}>
+      <div style={{ fontSize: 34, marginBottom: 8 }}>📈</div>
+      <div style={{ fontSize: 15, fontWeight: 600, color: "#5a6b7b" }}>Elige un ticker y pulsa «↻ Calcular»</div>
+      <div style={{ fontSize: 13, marginTop: 4 }}>Las curvas y el simulador aparecerán aquí después de calcular.</div>
     </div>
   );
 }

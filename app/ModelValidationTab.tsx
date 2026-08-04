@@ -3,17 +3,15 @@
 /**
  * ModelValidationTab.tsx — 📌 Validación de modelos (WYSIWYG)
  * ==========================================================
- * Rediseño según feedback de Luis:
- *   • Muestra EN VIVO las 7 curvas de predicción (igual que la pestaña Predicción)
- *     + el precio REAL — ANTES de guardar. "Lo que ves es lo que guardas".
+ *   • Muestra EN VIVO las 7 curvas de predicción + el precio REAL antes de guardar.
  *   • 💾 Guardar predicción → congela exactamente ese preview.
  *   • Selector para ver snapshots pasados y compararlos contra el real.
- *   • El precio real se toma del histórico que YA devuelve /forecast (campo
- *     'history'), así siempre se ve — sin depender de /price-history.
  *
- * Fuentes: POST /forecast · GET /predict-mlp · /forecast-sentiment · /psychology
- *          · GET /forecast-history · POST /save-snapshot
- * Env: NEXT_PUBLIC_ML_API_URL
+ * CAMBIOS UX:
+ *   1) El cálculo NO se dispara solo al cambiar el ticker; solo se pobla el
+ *      desplegable. Nada se calcula hasta pulsar «↻ Calcular en vivo».
+ *   2) Zoom independiente de eje X y eje Y (＋/－ por eje) + ⟲ Reset, que recorta
+ *      la ventana visible sin volver a llamar a la API.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -24,7 +22,6 @@ import {
 
 const API_URL = process.env.NEXT_PUBLIC_ML_API_URL || "http://localhost:8000";
 
-// Curvas: clave común (preview y snapshot) -> etiqueta + color
 const MODELS = [
   { key: "predicted", label: "XGBoost", color: "#e67e22" },
   { key: "mlp", label: "Red Neuronal (MLP)", color: "#16a085" },
@@ -42,17 +39,23 @@ export default function ModelValidationTab() {
 
   const [realHist, setRealHist] = useState<{ date: string; close: number }[]>([]);
   const [realLastDate, setRealLastDate] = useState<string>("");
-  const [livePoints, setLivePoints] = useState<any[]>([]);   // preview en vivo (7 curvas)
+  const [livePoints, setLivePoints] = useState<any[]>([]);
   const [liveBase, setLiveBase] = useState<number | null>(null);
 
   const [runs, setRuns] = useState<any[]>([]);
-  const [view, setView] = useState<string>("live");          // "live" o run_id
+  const [viewSel, setViewSel] = useState<string>("live");
+  const [calculated, setCalculated] = useState(false);   // ¿ya se calculó?
+
+  // Zoom independiente por eje (1 = ver todo). <1 recorta.
+  const [zoomX, setZoomX] = useState(1);
+  const [zoomY, setZoomY] = useState(1);
 
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
+  // SOLO poblar el desplegable de tickers (NO calcula nada).
   useEffect(() => {
     (async () => {
       try {
@@ -63,12 +66,9 @@ export default function ModelValidationTab() {
     })();
   }, []);
 
-  useEffect(() => { if (ticker) loadAll(ticker); /* eslint-disable-next-line */ }, [ticker]);
-
   async function loadAll(tk: string) {
-    setLoading(true); setError(null); setView("live");
+    setLoading(true); setError(null); setViewSel("live"); setZoomX(1); setZoomY(1);
     try {
-      // Preview EN VIVO: mismas llamadas que la pestaña Predicción + histórico snapshots
       const [fRes, mRes, sRes, pRes, hRes] = await Promise.all([
         fetch(`${API_URL}/forecast`, { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ticker: tk, horizon, n_sims: 10000, save: false }) }),
@@ -82,19 +82,15 @@ export default function ModelValidationTab() {
       const fj = await fRes.json();
       const pred = fj.prediction; const sim = fj.simulation;
 
-      // Precio REAL = histórico que ya trae /forecast (siempre disponible)
       const hist = (pred.history || []).map((h: any) => ({ date: h.date, close: h.close }));
       setRealHist(hist);
       setRealLastDate(hist.length ? hist[hist.length - 1].date : "");
       setLiveBase(pred.last_close);
 
-      // Construye los puntos del preview (mismas claves que un snapshot)
       const byDate: Record<string, any> = {};
       pred.prediction.forEach((p: any, i: number) => {
-        byDate[p.date] = {
-          target_date: p.date, predicted: p.close,
-          mc_median: sim.median[i], mc_p5: sim.p5[i], mc_p95: sim.p95[i],
-        };
+        byDate[p.date] = { target_date: p.date, predicted: p.close,
+          mc_median: sim.median[i], mc_p5: sim.p5[i], mc_p95: sim.p95[i] };
       });
       if (mRes.ok) { const mj = await mRes.json(); mj.prediction.forEach((p: any) => (byDate[p.date] = { ...(byDate[p.date] || { target_date: p.date }), mlp: p.close })); }
       if (sRes.ok) {
@@ -109,9 +105,9 @@ export default function ModelValidationTab() {
       }
       setLivePoints(Object.values(byDate).sort((a: any, b: any) => a.target_date.localeCompare(b.target_date)));
 
-      // Snapshots guardados
       if (hRes.status === 503) throw new Error("Supabase no está configurado en el servidor.");
       setRuns(hRes.ok ? ((await hRes.json()).runs || []) : []);
+      setCalculated(true);
     } catch (e: any) { setError(e.message); setLivePoints([]); }
     finally { setLoading(false); }
   }
@@ -126,9 +122,8 @@ export default function ModelValidationTab() {
       if (!res.ok) throw new Error((await res.json()).detail || "Error al guardar");
       const j = await res.json();
       setMsg(`✅ Predicción congelada (${j.points} puntos, 7 curvas). id ${String(j.run_id).slice(0, 8)}…`);
-      // Refresca el histórico de snapshots y salta a verlo
       const hRes = await fetch(`${API_URL}/forecast-history?ticker=${ticker}&limit_runs=20`);
-      if (hRes.ok) { const runs2 = (await hRes.json()).runs || []; setRuns(runs2); setView(j.run_id); }
+      if (hRes.ok) { const runs2 = (await hRes.json()).runs || []; setRuns(runs2); setViewSel(j.run_id); setZoomX(1); setZoomY(1); }
     } catch (e: any) { setError(e.message); }
     finally { setBusy(null); }
   }
@@ -139,18 +134,17 @@ export default function ModelValidationTab() {
     return m;
   }, [realHist]);
 
-  // Puntos activos según la vista: preview en vivo o snapshot guardado
   const activePoints = useMemo(() => {
-    if (view === "live") return livePoints;
-    const run = runs.find((r) => r.run_id === view);
+    if (viewSel === "live") return livePoints;
+    const run = runs.find((r) => r.run_id === viewSel);
     return run ? (run.points || []) : [];
-  }, [view, livePoints, runs]);
+  }, [viewSel, livePoints, runs]);
 
-  const activeRun = useMemo(() => runs.find((r) => r.run_id === view) || null, [runs, view]);
-  const frozenDate = view === "live" ? null : activeRun?.run_date;
+  const activeRun = useMemo(() => runs.find((r) => r.run_id === viewSel) || null, [runs, viewSel]);
+  const frozenDate = viewSel === "live" ? null : activeRun?.run_date;
 
-  // Serie: precio real (siempre) + curvas activas
-  const series = useMemo(() => {
+  // Serie completa (todas las fechas)
+  const fullSeries = useMemo(() => {
     const byDate: Record<string, any> = {};
     realHist.forEach((p) => (byDate[p.date] = { date: p.date, actual: p.close }));
     activePoints.forEach((pt: any) => {
@@ -164,7 +158,28 @@ export default function ModelValidationTab() {
     return Object.values(byDate).sort((a: any, b: any) => a.date.localeCompare(b.date));
   }, [realHist, activePoints]);
 
-  // MAPE al vuelo: curvas vs real en las fechas ya ocurridas
+  // Zoom X: recorta a la fracción final de puntos (más recientes/futuros)
+  const series = useMemo(() => {
+    if (zoomX >= 1 || fullSeries.length === 0) return fullSeries;
+    const keep = Math.max(5, Math.round(fullSeries.length * zoomX));
+    return fullSeries.slice(fullSeries.length - keep);
+  }, [fullSeries, zoomX]);
+
+  // Zoom Y: dominio recortado alrededor del punto medio del rango visible
+  const yDomain = useMemo<[any, any]>(() => {
+    if (zoomY >= 1) return ["auto", "auto"];
+    const vals: number[] = [];
+    series.forEach((r: any) => {
+      ["actual", "predicted", "mlp", "ml_sentiment", "sentiment_only", "psy_a", "psy_b", "mc_median"].forEach((k) => {
+        if (r[k] != null) vals.push(r[k]);
+      });
+    });
+    if (vals.length < 2) return ["auto", "auto"];
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    const mid = (lo + hi) / 2, half = ((hi - lo) / 2) * zoomY;
+    return [+(mid - half).toFixed(2), +(mid + half).toFixed(2)];
+  }, [series, zoomY]);
+
   const metrics = useMemo(() => {
     const pts = activePoints.filter((p: any) => realByDate[p.target_date] != null);
     const rows = MODELS.map((m) => {
@@ -180,7 +195,13 @@ export default function ModelValidationTab() {
   }, [activePoints, realByDate]);
 
   const evalCount = metrics.evalN;
-  const isLive = view === "live";
+  const isLive = viewSel === "live";
+
+  const zXin = () => setZoomX((z) => Math.max(0.1, +(z * 0.7).toFixed(3)));
+  const zXout = () => setZoomX((z) => Math.min(1, +(z / 0.7).toFixed(3)));
+  const zYin = () => setZoomY((z) => Math.max(0.1, +(z * 0.7).toFixed(3)));
+  const zYout = () => setZoomY((z) => Math.min(1, +(z / 0.7).toFixed(3)));
+  const zReset = () => { setZoomX(1); setZoomY(1); };
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", fontFamily: "system-ui" }}>
@@ -211,103 +232,144 @@ export default function ModelValidationTab() {
         </button>
       </div>
 
-      {/* Selector de vista: En vivo (preview) o snapshot guardado */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <span style={{ fontSize: 12, color: "#666" }}>Ver:</span>
-        <select value={view} onChange={(e) => setView(e.target.value)}
-          style={{ padding: 8, minWidth: 320, border: "1px solid #ddd", borderRadius: 6, fontSize: 13 }}>
-          <option value="live">🟢 En vivo (sin guardar) — lo que se guardaría</option>
-          {runs.map((r) => (
-            <option key={r.run_id} value={r.run_id}>
-              📌 {r.run_date} · {r.points?.length || 0} pts · base ${r.last_close} · id {String(r.run_id).slice(0, 8)}
-            </option>
-          ))}
-        </select>
-        {realLastDate && <span style={{ fontSize: 12, color: "#888" }}>Precio real hasta <b>{realLastDate}</b></span>}
-      </div>
-
-      {msg && <p style={{ color: "#1e824c", fontSize: 13 }}>{msg}</p>}
-      {error && <p style={{ color: "#c0392b", fontSize: 13 }}>⚠️ {error}</p>}
-
-      {isLive && livePoints.length > 0 && (
-        <p style={{ fontSize: 12, color: "#8e44ad", margin: "0 0 6px" }}>
-          🟢 Vista <b>EN VIVO</b>: estás viendo las 7 curvas recién calculadas. Pulsa <b>💾</b> para congelar exactamente esto.
-        </p>
+      {/* Estado vacío */}
+      {!calculated && !loading && !error && (
+        <div style={{ padding: "60px 20px", textAlign: "center", background: "#f7f9fb",
+                      borderRadius: 12, border: "1px dashed #d5dce3", color: "#7f8c8d", marginTop: 4 }}>
+          <div style={{ fontSize: 34, marginBottom: 8 }}>📌</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "#5a6b7b" }}>Elige un ticker y pulsa «↻ Calcular en vivo»</div>
+          <div style={{ fontSize: 13, marginTop: 4 }}>Verás las 7 curvas y el precio real; luego podrás guardar la predicción.</div>
+        </div>
       )}
 
-      {/* Gráfica */}
-      {series.length > 0 && (
+      {calculated && (
         <>
-          <ResponsiveContainer width="100%" height={430}>
-            <ComposedChart data={series} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
-              <XAxis dataKey="date" tick={{ fontSize: 10 }} minTickGap={30} />
-              <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11 }} width={60} />
-              <Tooltip /><Legend />
-              {frozenDate && <ReferenceLine x={frozenDate} stroke="#bbb" strokeDasharray="3 3"
-                label={{ value: "congelado", position: "top", fontSize: 9, fill: "#aaa" }} />}
-              <Area dataKey="bandBase" stackId="mc" stroke="none" fill="transparent" legendType="none" />
-              <Area dataKey="band" stackId="mc" stroke="none" fill="#3498db" fillOpacity={0.10} name="Banda P5–P95" />
-              {MODELS.map((m) => (
-                <Line key={m.key} dataKey={m.key} stroke={m.color} dot={false} strokeWidth={1.6}
-                      strokeDasharray="4 3" name={m.label} connectNulls />
+          {/* Selector de vista + Zoom X/Y */}
+          <div style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12, color: "#666" }}>Ver:</span>
+            <select value={viewSel} onChange={(e) => { setViewSel(e.target.value); setZoomX(1); setZoomY(1); }}
+              style={{ padding: 8, minWidth: 300, border: "1px solid #ddd", borderRadius: 6, fontSize: 13 }}>
+              <option value="live">🟢 En vivo (sin guardar) — lo que se guardaría</option>
+              {runs.map((r) => (
+                <option key={r.run_id} value={r.run_id}>
+                  📌 {r.run_date} · {r.points?.length || 0} pts · base ${r.last_close} · id {String(r.run_id).slice(0, 8)}
+                </option>
               ))}
-              <Line dataKey="actual" stroke="#111" dot={false} strokeWidth={2.6} name="Precio REAL" connectNulls />
-            </ComposedChart>
-          </ResponsiveContainer>
+            </select>
 
-          {/* Métricas */}
-          <div style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
-              Acierto por modelo (predicho vs. real){" "}
-              {evalCount === 0
-                ? <span style={{ color: "#b8860b", fontWeight: 400 }}>
-                    — {isLive ? "vista en vivo: las fechas predichas son futuras, aún sin real que comparar" : "el precio real aún no alcanza las fechas predichas"}
-                  </span>
-                : <span style={{ color: "#888", fontWeight: 400 }}>({evalCount} días ya ocurridos)</span>}
-            </div>
-            {evalCount > 0 && (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ background: "#eef2f6" }}>
-                      <th style={{ textAlign: "left", padding: "8px 10px" }}>Modelo</th>
-                      <th style={{ textAlign: "right", padding: "8px 10px" }}>MAPE (error medio)</th>
-                      <th style={{ textAlign: "right", padding: "8px 10px" }}>Días evaluados</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {metrics.rows.slice().sort((a: any, b: any) => (a.mape ?? 9) - (b.mape ?? 9)).map((m: any) => (
-                      <tr key={m.key} style={{ borderBottom: "1px solid #eef2f6" }}>
-                        <td style={{ padding: "7px 10px" }}>
-                          <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: m.color, marginRight: 6 }} />
-                          {m.label}
-                        </td>
-                        <td style={{ textAlign: "right", padding: "7px 10px", fontWeight: 600 }}>
-                          {m.mape == null ? "—" : `${(m.mape * 100).toFixed(2)}%`}
-                        </td>
-                        <td style={{ textAlign: "right", padding: "7px 10px", color: "#888" }}>{m.n}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {/* Zoom independiente por eje */}
+            {series.length > 0 && (
+              <div style={{ display: "inline-flex", gap: 8, alignItems: "center", marginLeft: "auto" }}>
+                <span style={{ fontSize: 12, color: "#666" }}>Zoom X:</span>
+                <ZoomBtn onClick={zXin} disabled={zoomX <= 0.1}>＋</ZoomBtn>
+                <ZoomBtn onClick={zXout} disabled={zoomX >= 1}>－</ZoomBtn>
+                <span style={{ fontSize: 12, color: "#666", marginLeft: 4 }}>Zoom Y:</span>
+                <ZoomBtn onClick={zYin} disabled={zoomY <= 0.1}>＋</ZoomBtn>
+                <ZoomBtn onClick={zYout} disabled={zoomY >= 1}>－</ZoomBtn>
+                <ZoomBtn onClick={zReset} disabled={zoomX >= 1 && zoomY >= 1}>⟲</ZoomBtn>
               </div>
-            )}
-            {metrics.coverage != null && evalCount > 0 && (
-              <p style={{ fontSize: 12, color: "#555", marginTop: 8 }}>
-                Cobertura banda Monte Carlo P5–P95: <b>{(metrics.coverage * 100).toFixed(0)}%</b> de los precios reales
-                cayeron dentro del rango previsto (ideal ≈ 90%).
-              </p>
             )}
           </div>
 
-          <p style={{ fontSize: 11, color: "#999", marginTop: 12 }}>
-            ⓘ El <b>precio real</b> (línea negra) siempre visible. En la vista <b>En vivo</b> ves lo que
-            guardarías; al guardar, queda <b>congelado</b> y la validación crece sola día a día. Menor MAPE =
-            modelo más preciso. No es recomendación de inversión.
-          </p>
+          {realLastDate && <span style={{ fontSize: 12, color: "#888" }}>Precio real hasta <b>{realLastDate}</b></span>}
+          {(zoomX < 1 || zoomY < 1) && (
+            <p style={{ fontSize: 11, color: "#2980b9", margin: "4px 0 0" }}>
+              🔍 Zoom X {Math.round(zoomX * 100)}% · Zoom Y {Math.round(zoomY * 100)}% · ⟲ para ver todo
+            </p>
+          )}
+
+          {msg && <p style={{ color: "#1e824c", fontSize: 13 }}>{msg}</p>}
+          {error && <p style={{ color: "#c0392b", fontSize: 13 }}>⚠️ {error}</p>}
+
+          {isLive && livePoints.length > 0 && (
+            <p style={{ fontSize: 12, color: "#8e44ad", margin: "6px 0" }}>
+              🟢 Vista <b>EN VIVO</b>: estás viendo las 7 curvas recién calculadas. Pulsa <b>💾</b> para congelar exactamente esto.
+            </p>
+          )}
+
+          {/* Gráfica */}
+          {series.length > 0 && (
+            <>
+              <ResponsiveContainer width="100%" height={430}>
+                <ComposedChart data={series} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} minTickGap={30} />
+                  <YAxis domain={yDomain} allowDataOverflow tick={{ fontSize: 11 }} width={60} />
+                  <Tooltip /><Legend />
+                  {frozenDate && <ReferenceLine x={frozenDate} stroke="#bbb" strokeDasharray="3 3"
+                    label={{ value: "congelado", position: "top", fontSize: 9, fill: "#aaa" }} />}
+                  <Area dataKey="bandBase" stackId="mc" stroke="none" fill="transparent" legendType="none" />
+                  <Area dataKey="band" stackId="mc" stroke="none" fill="#3498db" fillOpacity={0.10} name="Banda P5–P95" />
+                  {MODELS.map((m) => (
+                    <Line key={m.key} dataKey={m.key} stroke={m.color} dot={false} strokeWidth={1.6}
+                          strokeDasharray="4 3" name={m.label} connectNulls />
+                  ))}
+                  <Line dataKey="actual" stroke="#111" dot={false} strokeWidth={2.6} name="Precio REAL" connectNulls />
+                </ComposedChart>
+              </ResponsiveContainer>
+
+              {/* Métricas */}
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+                  Acierto por modelo (predicho vs. real){" "}
+                  {evalCount === 0
+                    ? <span style={{ color: "#b8860b", fontWeight: 400 }}>
+                        — {isLive ? "vista en vivo: las fechas predichas son futuras, aún sin real que comparar" : "el precio real aún no alcanza las fechas predichas"}
+                      </span>
+                    : <span style={{ color: "#888", fontWeight: 400 }}>({evalCount} días ya ocurridos)</span>}
+                </div>
+                {evalCount > 0 && (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: "#eef2f6" }}>
+                          <th style={{ textAlign: "left", padding: "8px 10px" }}>Modelo</th>
+                          <th style={{ textAlign: "right", padding: "8px 10px" }}>MAPE (error medio)</th>
+                          <th style={{ textAlign: "right", padding: "8px 10px" }}>Días evaluados</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {metrics.rows.slice().sort((a: any, b: any) => (a.mape ?? 9) - (b.mape ?? 9)).map((m: any) => (
+                          <tr key={m.key} style={{ borderBottom: "1px solid #eef2f6" }}>
+                            <td style={{ padding: "7px 10px" }}>
+                              <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: m.color, marginRight: 6 }} />
+                              {m.label}
+                            </td>
+                            <td style={{ textAlign: "right", padding: "7px 10px", fontWeight: 600 }}>
+                              {m.mape == null ? "—" : `${(m.mape * 100).toFixed(2)}%`}
+                            </td>
+                            <td style={{ textAlign: "right", padding: "7px 10px", color: "#888" }}>{m.n}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {metrics.coverage != null && evalCount > 0 && (
+                  <p style={{ fontSize: 12, color: "#555", marginTop: 8 }}>
+                    Cobertura banda Monte Carlo P5–P95: <b>{(metrics.coverage * 100).toFixed(0)}%</b> de los precios reales
+                    cayeron dentro del rango previsto (ideal ≈ 90%).
+                  </p>
+                )}
+              </div>
+
+              <p style={{ fontSize: 11, color: "#999", marginTop: 12 }}>
+                ⓘ El <b>precio real</b> (línea negra) siempre visible. En la vista <b>En vivo</b> ves lo que
+                guardarías; al guardar, queda <b>congelado</b> y la validación crece sola día a día. Menor MAPE =
+                modelo más preciso. No es recomendación de inversión.
+              </p>
+            </>
+          )}
         </>
       )}
     </div>
+  );
+}
+
+function ZoomBtn({ children, onClick, disabled }: { children: any; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button onClick={onClick} disabled={disabled}
+      style={{ width: 32, height: 32, border: "1px solid #ddd", borderRadius: 6, cursor: disabled ? "default" : "pointer",
+               background: disabled ? "#f5f5f5" : "#fff", color: disabled ? "#bbb" : "#333", fontSize: 15 }}>{children}</button>
   );
 }
