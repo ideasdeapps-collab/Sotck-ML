@@ -11,6 +11,7 @@ Endpoints:
     GET  /psychology                               ← Índice de Psicología de Mercado (IPM)
     GET  /forecast-history
     POST /predict · /simulate · /forecast · /backfill-actuals
+    POST /save-snapshot                            ← congela TODAS las curvas (Supabase)
 
 Deploy: uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
 """
@@ -45,7 +46,7 @@ from psychology import psychology_analysis      # noqa: E402  ← Índice de Psi
 import supabase_client as sb                     # noqa: E402
 
 ARTIFACT_DIR = Path(__file__).resolve().parent / "artifacts"
-app = FastAPI(title="Stock ML API", version="2.3.0")
+app = FastAPI(title="Stock ML API", version="2.4.0")
 
 ALLOWED = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(CORSMiddleware, allow_origins=ALLOWED, allow_credentials=True,
@@ -72,6 +73,11 @@ class SimulateRequest(BaseModel):
 
 class ForecastRequest(SimulateRequest):
     save: bool = Field(True)
+
+
+class SnapshotRequest(BaseModel):
+    ticker: str = Field(..., examples=["NVDA"])
+    horizon: int = Field(30, ge=1, le=252)
 
 
 # --------------------------------------------------------------------------- #
@@ -288,8 +294,59 @@ def forecast(req: ForecastRequest):
             "run_id": run_id, "persisted": run_id is not None}
 
 
+@app.post("/save-snapshot")
+def save_snapshot(req: SnapshotRequest):
+    """Congela un snapshot con TODAS las curvas (XGBoost, MLP, Sentimiento,
+    Psicología A/B, Monte Carlo) y lo guarda en Supabase para validar después."""
+    if not sb.enabled():
+        raise HTTPException(503, "Supabase no está configurado en el servidor.")
+    ticker = req.ticker.upper()
+    h = req.horizon
+
+    pred = predict_curve(ticker, h)                    # XGBoost (+ dates, last_close)
+    last_close = pred["last_close"]
+    _, meta = load_model(ticker)
+    sim = monte_carlo_gbm(s0=last_close, mu_daily=meta["mu_daily"],
+                          sigma_daily=meta["sigma_daily"], horizon=h, n_sims=10000)
+
+    # Curvas opcionales (degradan a [] si el modelo/servicio no está)
+    try:
+        mlp = predict_curve_mlp(ticker, h)["prediction"]
+    except Exception:
+        mlp = []
+    try:
+        s = forecast_with_sentiment(predict_curve, ticker, h)
+        mlsent = s.get("ml_plus_sentiment", []); sentonly = s.get("sentiment_only", [])
+    except Exception:
+        mlsent, sentonly = [], []
+    try:
+        psy = psychology_analysis(ticker, h)
+        psyA = (psy.get("contrarian") or {}).get("curve", [])
+        psyB = (psy.get("learned") or {}).get("curve", []) if psy.get("learned") else []
+    except Exception:
+        psyA, psyB = [], []
+
+    def bydate(lst):
+        return {p["date"]: p["close"] for p in (lst or [])}
+    m_mlp, m_ms, m_so, m_a, m_b = bydate(mlp), bydate(mlsent), bydate(sentonly), bydate(psyA), bydate(psyB)
+
+    points = []
+    for i, p in enumerate(pred["prediction"]):
+        d = p["date"]
+        points.append({
+            "target_date": d, "xgb": p["close"],
+            "mlp": m_mlp.get(d), "ml_sentiment": m_ms.get(d),
+            "sentiment_only": m_so.get(d), "psy_a": m_a.get(d), "psy_b": m_b.get(d),
+            "mc_median": sim["median"][i], "mc_p5": sim["p5"][i],
+            "mc_p25": sim["p25"][i], "mc_p75": sim["p75"][i], "mc_p95": sim["p95"][i],
+        })
+
+    run_id = sb.save_full_snapshot(ticker, last_close, h, points, meta)
+    return {"saved": True, "run_id": run_id, "points": len(points), "ticker": ticker}
+
+
 @app.get("/forecast-history")
-def forecast_history(ticker: str, limit_runs: int = 5):
+def forecast_history(ticker: str, limit_runs: int = 10):
     if not sb.enabled():
         raise HTTPException(503, "Supabase no está configurado en el servidor.")
     return {"ticker": ticker.upper(), "runs": sb.get_forecast_history(ticker, limit_runs)}
