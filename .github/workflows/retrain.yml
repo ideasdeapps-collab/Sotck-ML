@@ -44,9 +44,24 @@ jobs:
           fi
           echo "POLYGON_API_KEY presente (len=${#POLYGON_API_KEY})."
 
+      # ------------------------------------------------------------------- #
+      # Fase 1 — Refresca la caché de precios en Supabase ANTES de entrenar.
+      # Así los usuarios leen precios frescos desde Supabase (sin llamar a
+      # Polygon) y el entrenamiento reutiliza esa misma caché.
+      # Requiere SUPABASE_URL y SUPABASE_SERVICE_KEY como Secrets del repo.
+      # ------------------------------------------------------------------- #
+      - name: Refresh price cache (Supabase)
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python training/refresh_prices.py
+
       - name: Train (XGBoost + MLP + Psychology) + backtest — rate-limit friendly
         env:
           POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
           TICKERS="${{ github.event.inputs.tickers }}"
           if [ -z "$TICKERS" ]; then TICKERS="$DEFAULT_TICKERS"; fi
