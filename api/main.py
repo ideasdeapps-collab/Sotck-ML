@@ -136,6 +136,28 @@ def predict_curve(ticker: str, horizon: int) -> dict:
 # --------------------------------------------------------------------------- #
 # Endpoints
 # --------------------------------------------------------------------------- #
+
+ @app.get("/price-history")
+    def price_history(ticker: str, days: int = 200):
+        """Cierres reales diarios EN VIVO (Polygon). Independiente de predicciones:
+        se usa como línea de precio real para validar snapshots al vuelo."""
+        try:
+            raw = fetch_polygon(ticker, years=max(1, days // 200 + 1))
+            recent = raw.tail(days)
+            return {
+                "ticker": ticker.upper(),
+                "last_date": pd.to_datetime(recent["date"].iloc[-1]).date().isoformat(),
+                "history": [
+                    {"date": pd.to_datetime(d).date().isoformat(), "close": round(float(c), 4)}
+                    for d, c in zip(recent["date"], recent["close"])
+                ],
+            }
+        except Exception as e:
+            raise HTTPException(400, str(e))
+
+
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "time": dt.datetime.utcnow().isoformat() + "Z"}
