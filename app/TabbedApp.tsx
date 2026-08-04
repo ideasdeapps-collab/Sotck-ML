@@ -1,15 +1,16 @@
 "use client";
 
 /**
- * TabbedApp.tsx — Contenedor de pestañas (con Psicología / IPM)
- * ============================================================
- *   1) Predicción       -> StockForecastChart (curvas incl. psicológicas A/B)
- *   2) Intradía          -> IntradayChart
- *   3) Señales           -> SignalsTab
- *   4) Técnico (Elliott) -> TechnicalTab
- *   5) Psicología (IPM)  -> PsychologyTab    ← NUEVA
- *   6) Backtest          -> BacktestChart
- *   7) Panel             -> Dashboard
+ * TabbedApp.tsx — Contenedor de pestañas
+ * ======================================
+ *   1) Predicción            -> StockForecastChart (curvas + simulador)
+ *   2) Intradía               -> IntradayChart
+ *   3) Señales                -> SignalsTab
+ *   4) Técnico (Elliott)      -> TechnicalTab
+ *   5) Psicología (IPM)       -> PsychologyTab
+ *   6) Validación de modelos  -> ModelValidationTab   ← NUEVA (snapshots vs real)
+ *   7) Backtest               -> BacktestChart
+ *   8) Panel                  -> Dashboard
  */
 
 import { useState } from "react";
@@ -18,6 +19,7 @@ import IntradayChart from "./IntradayChart";
 import SignalsTab from "./SignalsTab";
 import TechnicalTab from "./TechnicalTab";
 import PsychologyTab from "./PsychologyTab";
+import ModelValidationTab from "./ModelValidationTab";
 import BacktestChart from "./BacktestChart";
 import Dashboard from "./Dashboard";
 
@@ -27,6 +29,7 @@ const TABS = [
   { id: "signals", label: "🔔 Señales", node: <SignalsTab /> },
   { id: "technical", label: "🌊 Técnico (Elliott)", node: <TechnicalTab /> },
   { id: "psychology", label: "🧠 Psicología (IPM)", node: <PsychologyTab /> },
+  { id: "validation", label: "📌 Validación de modelos", node: <ModelValidationTab /> },
   { id: "backtest", label: "🎯 Backtest", node: <BacktestChart /> },
   { id: "dashboard", label: "📊 Panel", node: <Dashboard /> },
 ];
