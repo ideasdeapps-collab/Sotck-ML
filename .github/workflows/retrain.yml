@@ -99,3 +99,27 @@ jobs:
             git commit -m "chore: retrain XGBoost + MLP + Psychology + backtest [skip ci]"
             git push
           fi
+
+  # ------------------------------------------------------------------------- #
+  # Backfill automático de precios reales en los snapshots guardados (Supabase)
+  # Corre DESPUÉS del retrain. Rellena actual_close para validar predicho-vs-real.
+  # Requiere la variable de repo ML_API_URL (Settings → Secrets and variables →
+  # Actions → Variables → New variable: ML_API_URL = https://tu-api.onrender.com).
+  # ------------------------------------------------------------------------- #
+  backfill-actuals:
+    needs: retrain
+    runs-on: ubuntu-latest
+    if: ${{ vars.ML_API_URL != '' }}
+    steps:
+      - name: Backfill actual_close en Supabase (vía API en Render)
+        env:
+          ML_API_URL: ${{ vars.ML_API_URL }}
+        run: |
+          TICKERS="${{ github.event.inputs.tickers }}"
+          if [ -z "$TICKERS" ]; then TICKERS="$DEFAULT_TICKERS"; fi
+          echo "Rellenando precios reales en snapshots para: $TICKERS"
+          for T in $TICKERS; do
+            curl -s -X POST "${ML_API_URL}/backfill-actuals?ticker=$T&days=120" \
+              -o /dev/null -w "  backfill $T: %{http_code}\n" || true
+            sleep 15   # espaciado: respeta el límite de 5 llamadas/min (plan gratuito)
+          done
