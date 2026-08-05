@@ -1,0 +1,29 @@
+{
+  "ticker": "AVGO",
+  "model": "XGBoost-intraday-15m",
+  "interval_min": 15,
+  "bars_per_session": 26,
+  "clamp_k": 3.0,
+  "sigma_15m": 0.003188,
+  "trained_at": "2026-08-05T15:21:27.284664Z",
+  "n_samples": 1260,
+  "feature_cols": [
+    "tod_sin",
+    "tod_cos",
+    "bars_left",
+    "ret_from_open",
+    "dist_vwap",
+    "range_rel",
+    "vol_rel",
+    "gap",
+    "ret_lag_1",
+    "ret_lag_2",
+    "ret_lag_3",
+    "ret_lag_4"
+  ],
+  "metrics": {
+    "mae": 0.002363946112068854,
+    "r2": -0.12842548166027568,
+    "directional_accuracy": 0.43253968253968256
+  }
+}

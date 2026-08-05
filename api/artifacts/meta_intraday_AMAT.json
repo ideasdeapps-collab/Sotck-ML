@@ -1,0 +1,29 @@
+{
+  "ticker": "AMAT",
+  "model": "XGBoost-intraday-15m",
+  "interval_min": 15,
+  "bars_per_session": 26,
+  "clamp_k": 3.0,
+  "sigma_15m": 0.003954,
+  "trained_at": "2026-08-05T15:21:49.066230Z",
+  "n_samples": 1900,
+  "feature_cols": [
+    "tod_sin",
+    "tod_cos",
+    "bars_left",
+    "ret_from_open",
+    "dist_vwap",
+    "range_rel",
+    "vol_rel",
+    "gap",
+    "ret_lag_1",
+    "ret_lag_2",
+    "ret_lag_3",
+    "ret_lag_4"
+  ],
+  "metrics": {
+    "mae": 0.003966452957658842,
+    "r2": -0.053927685985433405,
+    "directional_accuracy": 0.48157894736842105
+  }
+}
