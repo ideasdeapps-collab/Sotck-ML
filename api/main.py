@@ -2,11 +2,12 @@
 main.py — API de ML (predicción, simulación, intradía, señales, técnico, MLP, validación, psicología)
 =====================================================================================================
 Endpoints:
-    GET  /health · /models · /models-mlp
+    GET  /health · /models · /models-mlp · /models-intraday
     GET  /backtest · /dashboard
     GET  /intraday · /signals · /signals-scan
     GET  /forecast-sentiment · /technical
     GET  /predict-mlp                              ← curva RED NEURONAL (MLP)
+    GET  /predict-intraday                         ← sesión intradía 15 min + Elliott
     GET  /validate                                 ← predicho vs real (XGBoost y MLP)
     GET  /psychology                               ← Índice de Psicología de Mercado (IPM)
     GET  /price-cache                              ← precio real desde Supabase (sin Polygon)
@@ -44,11 +45,12 @@ from technical import technical_analysis        # noqa: E402
 from mlp import predict_curve_mlp               # noqa: E402  ← curva red neuronal
 from validate import validate_models           # noqa: E402  ← predicho vs real
 from psychology import psychology_analysis      # noqa: E402  ← Índice de Psicología (IPM)
+from intraday_ml import predict_session         # noqa: E402  ← sesión intradía 15 min
 import supabase_client as sb                     # noqa: E402
 import price_store                               # noqa: E402  ← caché de precios (Supabase)
 
 ARTIFACT_DIR = Path(__file__).resolve().parent / "artifacts"
-app = FastAPI(title="Stock ML API", version="2.4.0")
+app = FastAPI(title="Stock ML API", version="2.5.0")
 
 ALLOWED = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(CORSMiddleware, allow_origins=ALLOWED, allow_credentials=True,
@@ -165,13 +167,21 @@ def health():
 
 @app.get("/models")
 def list_models():
-    return {"available": sorted(p.stem.replace("xgb_", "") for p in ARTIFACT_DIR.glob("xgb_*.joblib"))}
+    return {"available": sorted(p.stem.replace("xgb_", "") for p in ARTIFACT_DIR.glob("xgb_*.joblib")
+                                if not p.stem.startswith("xgb_intraday_"))}
 
 
 @app.get("/models-mlp")
 def list_models_mlp():
     """Tickers que tienen modelo de red neuronal (MLP) entrenado."""
     return {"available": sorted(p.stem.replace("mlp_", "") for p in ARTIFACT_DIR.glob("mlp_*.joblib"))}
+
+
+@app.get("/models-intraday")
+def list_models_intraday():
+    """Tickers que tienen modelo INTRADÍA (15 min) entrenado."""
+    return {"available": sorted(p.stem.replace("xgb_intraday_", "")
+                                for p in ARTIFACT_DIR.glob("xgb_intraday_*.joblib"))}
 
 
 @app.get("/backtest")
@@ -187,7 +197,9 @@ def get_backtest(ticker: str):
 def dashboard():
     rows = []
     for meta_path in sorted(ARTIFACT_DIR.glob("meta_*.json")):
-        if meta_path.stem.startswith("meta_mlp_") or meta_path.stem.startswith("meta_psych_"):
+        if (meta_path.stem.startswith("meta_mlp_")
+                or meta_path.stem.startswith("meta_psych_")
+                or meta_path.stem.startswith("meta_intraday_")):
             continue
         t = meta_path.stem.replace("meta_", "")
         with open(meta_path) as f:
@@ -258,6 +270,18 @@ def predict_mlp(ticker: str, horizon: int = 21):
     """Curva de predicción con la RED NEURONAL (MLP). Mismo formato que /predict."""
     try:
         return predict_curve_mlp(ticker, horizon)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/predict-intraday")
+def predict_intraday(ticker: str):
+    """Curva recursiva intradía de 15 min del resto de la sesión (con clamp).
+    Devuelve real + predicho + full + Elliott (real y sesión completa)."""
+    try:
+        return predict_session(ticker)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e))
     except Exception as e:
