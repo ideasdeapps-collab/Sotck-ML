@@ -1,4 +1,4 @@
-name: Retrain models (XGBoost + MLP + Psychology)
+name: Retrain models (XGBoost + MLP + Psychology + Intraday)
 
 on:
   schedule:
@@ -10,9 +10,12 @@ on:
         default: ""
 
 env:
-  # Plan gratuito Polygon = 2 años de histórico.
+  # Plan gratuito Polygon = 2 años de histórico (diario).
   DEFAULT_TICKERS: "SNDK SMH AMAT TSM QQQ NVDA MU XLI AVGO SPCX KOID BOTZ IGV ASML META SKHY SOXX IDGT"
   YEARS: "2"
+  # Intradía (plan Starter): subconjunto LÍQUIDO. Vacío = no entrena intradía.
+  INTRADAY_TICKERS: "NVDA TSM AVGO META QQQ AMAT"
+  INTRADAY_DAYS: "120"
 
 # Permite que el GITHUB_TOKEN haga push de los artefactos al repo.
 # (Además: Settings → Actions → General → Workflow permissions → Read and write.)
@@ -46,8 +49,6 @@ jobs:
 
       # ------------------------------------------------------------------- #
       # Fase 1 — Refresca la caché de precios en Supabase ANTES de entrenar.
-      # Así los usuarios leen precios frescos desde Supabase (sin llamar a
-      # Polygon) y el entrenamiento reutiliza esa misma caché.
       # Requiere SUPABASE_URL y SUPABASE_SERVICE_KEY como Secrets del repo.
       # ------------------------------------------------------------------- #
       - name: Refresh price cache (Supabase)
@@ -94,6 +95,25 @@ jobs:
           done
           echo "Tickers con fallo:$FAILED"
 
+      # ------------------------------------------------------------------- #
+      # ML INTRADÍA (barras de 15 min) — solo tickers líquidos (plan Starter).
+      # Aislado del diario: si falla, no afecta a los modelos anteriores.
+      # Genera xgb_intraday_<T>.joblib + meta_intraday_<T>.json
+      # ------------------------------------------------------------------- #
+      - name: Train intraday (15 min) — tickers líquidos
+        if: ${{ env.INTRADAY_TICKERS != '' }}
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+        run: |
+          echo "Entrenando modelos intradía (${INTRADAY_DAYS} días de 15 min): $INTRADAY_TICKERS"
+          for T in $INTRADAY_TICKERS; do
+            echo "::group::Intradía $T"
+            python training/train_xgb_intraday.py --ticker "$T" --days "$INTRADAY_DAYS" \
+              || echo "::warning::train_xgb_intraday falló para $T"
+            echo "::endgroup::"
+            sleep 5   # margen pequeño (Starter no tiene el límite de 5/min)
+          done
+
       - name: Verify artifacts exist
         run: |
           COUNT=$(ls api/artifacts/*.joblib 2>/dev/null | wc -l)
@@ -111,15 +131,13 @@ jobs:
           if git diff --cached --quiet; then
             echo "Sin cambios que commitear."
           else
-            git commit -m "chore: retrain XGBoost + MLP + Psychology + backtest [skip ci]"
+            git commit -m "chore: retrain XGBoost + MLP + Psychology + Intraday + backtest [skip ci]"
             git push
           fi
 
   # ------------------------------------------------------------------------- #
   # Backfill automático de precios reales en los snapshots guardados (Supabase)
-  # Corre DESPUÉS del retrain. Rellena actual_close para validar predicho-vs-real.
-  # Requiere la variable de repo ML_API_URL (Settings → Secrets and variables →
-  # Actions → Variables → New variable: ML_API_URL = https://tu-api.onrender.com).
+  # Corre DESPUÉS del retrain. Requiere la variable de repo ML_API_URL.
   # ------------------------------------------------------------------------- #
   backfill-actuals:
     needs: retrain
