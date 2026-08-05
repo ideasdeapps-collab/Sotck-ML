@@ -22,6 +22,7 @@ import PsychologyTab from "./PsychologyTab";
 import ModelValidationTab from "./ModelValidationTab";
 import BacktestChart from "./BacktestChart";
 import Dashboard from "./Dashboard";
+import IntradaySessionTab from "./IntradaySessionTab";
 
 const TABS = [
   { id: "forecast", label: "📈 Predicción", node: <StockForecastChart /> },
@@ -30,6 +31,7 @@ const TABS = [
   { id: "technical", label: "🌊 Técnico (Elliott)", node: <TechnicalTab /> },
   { id: "psychology", label: "🧠 Psicología (IPM)", node: <PsychologyTab /> },
   { id: "validation", label: "📌 Validación de modelos", node: <ModelValidationTab /> },
+  { id: "intraday-ml", label: "🕐 Sesión intradía (ML)", node: <IntradaySessionTab /> },
   { id: "backtest", label: "🎯 Backtest", node: <BacktestChart /> },
   { id: "dashboard", label: "📊 Panel", node: <Dashboard /> },
 ];
