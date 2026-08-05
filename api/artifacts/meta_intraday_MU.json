@@ -1,12 +1,12 @@
 {
-  "ticker": "NVDA",
+  "ticker": "MU",
   "model": "XGBoost-intraday-15m",
   "interval_min": 15,
   "bars_per_session": 26,
   "clamp_k": 3.0,
-  "sigma_15m": 0.002596,
-  "trained_at": "2026-08-05T16:01:04.256505Z",
-  "n_samples": 1060,
+  "sigma_15m": 0.004902,
+  "trained_at": "2026-08-05T16:02:02.490734Z",
+  "n_samples": 1120,
   "feature_cols": [
     "tod_sin",
     "tod_cos",
@@ -22,8 +22,8 @@
     "ret_lag_4"
   ],
   "metrics": {
-    "mae": 0.0015703314819895439,
-    "r2": -0.07913781163896783,
-    "directional_accuracy": 0.49528301886792453
+    "mae": 0.003562370809886312,
+    "r2": -0.1245641548981049,
+    "directional_accuracy": 0.5133928571428571
   }
 }
