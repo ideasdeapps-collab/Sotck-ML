@@ -9,6 +9,12 @@ on:
         description: "Tickers separados por espacio (vacío = lista completa)"
         default: ""
 
+# Impide que DOS corridas del workflow se ejecuten a la vez (la causa del
+# "! [rejected] main -> main"). Una corrida en curso se cancela si llega otra.
+concurrency:
+  group: retrain-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   # Plan gratuito Polygon = 2 años de histórico (diario).
   DEFAULT_TICKERS: "SNDK SMH AMAT TSM QQQ NVDA MU XLI AVGO SPCX KOID BOTZ IGV ASML META SKHY SOXX IDGT"
@@ -29,6 +35,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: true
+          fetch-depth: 0            # historial completo (rebase más robusto)
 
       - uses: actions/setup-python@v5
         with:
@@ -77,10 +84,8 @@ jobs:
               sleep 20
             done
             if [ "$OK" -eq 1 ]; then
-              # Red neuronal (MLP) — reutiliza el diario cacheado, no gasta llamada extra
               python training/train_mlp.py --ticker "$T" --years "$YEARS" \
                 || echo "::warning::train_mlp falló para $T"
-              # Modelo psicológico (IPM Opción B) — también reutiliza el diario cacheado
               python training/train_psych.py --ticker "$T" --years "$YEARS" --horizon 21 \
                 || echo "::warning::train_psych falló para $T"
               sleep 13
@@ -98,7 +103,6 @@ jobs:
       # ------------------------------------------------------------------- #
       # ML INTRADÍA (barras de 15 min) — solo tickers líquidos (plan Starter).
       # Aislado del diario: si falla, no afecta a los modelos anteriores.
-      # Genera xgb_intraday_<T>.joblib + meta_intraday_<T>.json
       # ------------------------------------------------------------------- #
       - name: Train intraday (15 min) — tickers líquidos
         if: ${{ env.INTRADAY_TICKERS != '' }}
@@ -111,7 +115,7 @@ jobs:
             python training/train_xgb_intraday.py --ticker "$T" --days "$INTRADAY_DAYS" \
               || echo "::warning::train_xgb_intraday falló para $T"
             echo "::endgroup::"
-            sleep 5   # margen pequeño (Starter no tiene el límite de 5/min)
+            sleep 5
           done
 
       - name: Verify artifacts exist
@@ -123,6 +127,11 @@ jobs:
             exit 1
           fi
 
+      # ------------------------------------------------------------------- #
+      # Commit + push RESILIENTE: si el remoto cambió durante el entrenamiento
+      # (otro push llegó primero), hace pull --rebase y reintenta hasta 3 veces.
+      # Esto resuelve el "! [rejected] main -> main (fetch first)".
+      # ------------------------------------------------------------------- #
       - name: Commit artifacts
         run: |
           git config user.name  "github-actions[bot]"
@@ -130,10 +139,19 @@ jobs:
           find api/artifacts -type f \( -name '*.joblib' -o -name '*.json' \) -print0 | xargs -0 git add
           if git diff --cached --quiet; then
             echo "Sin cambios que commitear."
-          else
-            git commit -m "chore: retrain XGBoost + MLP + Psychology + Intraday + backtest [skip ci]"
-            git push
+            exit 0
           fi
+          git commit -m "chore: retrain XGBoost + MLP + Psychology + Intraday + backtest [skip ci]"
+          for i in 1 2 3; do
+            if git push origin HEAD:main; then
+              echo "Push OK en intento $i"
+              exit 0
+            fi
+            echo "Push rechazado (intento $i). Integrando cambios remotos con rebase..."
+            git pull --rebase --autostash origin main || true
+          done
+          echo "::error::No se pudo hacer push tras 3 intentos (conflicto persistente)."
+          exit 1
 
   # ------------------------------------------------------------------------- #
   # Backfill automático de precios reales en los snapshots guardados (Supabase)
@@ -154,5 +172,5 @@ jobs:
           for T in $TICKERS; do
             curl -s -X POST "${ML_API_URL}/backfill-actuals?ticker=$T&days=120" \
               -o /dev/null -w "  backfill $T: %{http_code}\n" || true
-            sleep 15   # espaciado: respeta el límite de 5 llamadas/min (plan gratuito)
+            sleep 15
           done
