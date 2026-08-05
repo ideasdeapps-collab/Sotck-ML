@@ -20,7 +20,7 @@ env:
   DEFAULT_TICKERS: "SNDK SMH AMAT TSM QQQ NVDA MU XLI AVGO SPCX KOID BOTZ IGV ASML META SKHY SOXX IDGT"
   YEARS: "2"
   # Intradía (plan Starter): subconjunto LÍQUIDO. Vacío = no entrena intradía.
-  INTRADAY_TICKERS: "NVDA TSM AVGO META QQQ AMAT"
+  INTRADAY_TICKERS: "NVDA TSM AVGO META QQQ AMAT SNDK IGV MU"
   INTRADAY_DAYS: "120"
 
 # Permite que el GITHUB_TOKEN haga push de los artefactos al repo.
