@@ -50,9 +50,11 @@ from mlp import predict_curve_mlp               # noqa: E402  ← curva red neur
 from validate import validate_models           # noqa: E402  ← predicho vs real
 from psychology import psychology_analysis      # noqa: E402  ← Índice de Psicología (IPM)
 from intraday_ml import predict_session, fetch_today_bars  # noqa: E402  ← sesión intradía 15 min
+from intraday_ml import predict_session, fetch_today_bars, fetch_live_price  # noqa: E402
 import supabase_client as sb                     # noqa: E402
 import price_store                               # noqa: E402  ← caché de precios (Supabase)
 import intraday_store                            # noqa: E402  ← snapshots intradía (Supabase)
+
 
 ARTIFACT_DIR = Path(__file__).resolve().parent / "artifacts"
 app = FastAPI(title="Stock ML API", version="2.6.0")
@@ -416,6 +418,14 @@ def intraday_bars(ticker: str, session_date: str):
              "low": round(float(r["low"]), 4), "close": round(float(r["close"]), 4),
              "volume": int(r["volume"])} for _, r in df.iterrows()]
     return {"ticker": ticker.upper(), "session_date": session_date, "bars": bars}
+    
+@app.get("/intraday-live")
+def intraday_live(ticker: str):
+        """Último precio de 1 min (para el número en vivo y la señal móvil)."""
+        try:
+            return {"ticker": ticker.upper(), **fetch_live_price(ticker)}
+        except Exception as e:
+            raise HTTPException(400, str(e))
 
 
 @app.post("/predict")
