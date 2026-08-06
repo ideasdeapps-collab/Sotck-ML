@@ -88,6 +88,25 @@ def latest_session_date(ticker: str) -> str | None:
     return r.json()[0]["session_date"]
 
 
+def list_sessions(ticker: str, limit: int = 60) -> list[dict]:
+    """Fechas de sesión distintas que tienen snapshots para el ticker,
+    con cuántos snapshots hay en cada una (para el dropdown)."""
+    if not _ENABLED:
+        return []
+    r = requests.get(f"{SUPABASE_URL}/rest/v1/intraday_snapshots", headers=_h(),
+                     params={"ticker": f"eq.{ticker.upper()}",
+                             "order": "session_date.desc,calc_time.asc",
+                             "select": "session_date"}, timeout=20)
+    if not r.ok:
+        return []
+    counts: dict = {}
+    for row in r.json():
+        d = row["session_date"]
+        counts[d] = counts.get(d, 0) + 1
+    sessions = sorted(counts.items(), key=lambda kv: kv[0], reverse=True)[:limit]
+    return [{"session_date": d, "count": c} for d, c in sessions]
+
+
 # --------------------------------------------------------------------------- #
 # Scorecard: mide cada snapshot vs. real y vs. baseline "sin cambio"
 # --------------------------------------------------------------------------- #
@@ -104,7 +123,6 @@ def score_snapshots(snapshots: list[dict], real_bars: list[dict]) -> dict:
     for s in snapshots:
         anchor = float(s["anchor_close"])
         pts = s.get("points", []) or []
-        # Solo puntos cuya fecha/hora ya ocurrió (hay real para comparar)
         matched = [(p, real_by_time[p["time"]]) for p in pts if p["time"] in real_by_time]
         n = len(matched)
         if n == 0:
@@ -158,23 +176,6 @@ def score_snapshots(snapshots: list[dict], real_bars: list[dict]) -> dict:
         else:
             verdict = "El baseline 'sin cambio' gana: el modelo no aportó valor hoy."
 
-    return {"rows": rows, "avg_skill": round(sum(r["skill"] for r in scored) / len(scored), 4) if scored else None,
+    return {"rows": rows,
+            "avg_skill": round(sum(r["skill"] for r in scored) / len(scored), 4) if scored else None,
             "n_scored": len(scored), "verdict": verdict}
-    def list_sessions(ticker: str, limit: int = 60) -> list[dict]:
-    """Fechas de sesión distintas que tienen snapshots para el ticker,
-    con cuántos snapshots hay en cada una (para el dropdown)."""
-    if not _ENABLED:
-        return []
-    r = requests.get(f"{SUPABASE_URL}/rest/v1/intraday_snapshots", headers=_h(),
-                     params={"ticker": f"eq.{ticker.upper()}",
-                             "order": "session_date.desc,calc_time.asc",
-                             "select": "session_date"}, timeout=20)
-    if not r.ok:
-        return []
-    counts: dict = {}
-    for row in r.json():
-        d = row["session_date"]
-        counts[d] = counts.get(d, 0) + 1
-    # orden descendente por fecha
-    sessions = sorted(counts.items(), key=lambda kv: kv[0], reverse=True)[:limit]
-    return [{"session_date": d, "count": c} for d, c in sessions]
