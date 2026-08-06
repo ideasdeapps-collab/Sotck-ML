@@ -402,6 +402,20 @@ def list_intraday_sessions(ticker: str):
         raise HTTPException(503, "Supabase no está configurado.")
     return {"ticker": ticker.upper(),
             "sessions": intraday_store.list_sessions(ticker)}
+    
+@app.get("/intraday-bars")
+def intraday_bars(ticker: str, session_date: str):
+    """Velas de 15 min (OHLC) de una fecha concreta, para ver sesiones pasadas."""
+    from intraday_ml import fetch_bars_for_date   # o impórtalo arriba
+    try:
+        df = fetch_bars_for_date(ticker, session_date)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+    bars = [{"time": pd.Timestamp(r["dt_et"]).isoformat(),
+             "open": round(float(r["open"]), 4), "high": round(float(r["high"]), 4),
+             "low": round(float(r["low"]), 4), "close": round(float(r["close"]), 4),
+             "volume": int(r["volume"])} for _, r in df.iterrows()]
+    return {"ticker": ticker.upper(), "session_date": session_date, "bars": bars}
 
 
 @app.post("/predict")
