@@ -178,14 +178,3 @@ def score_snapshots(snapshots: list[dict], real_bars: list[dict]) -> dict:
     # orden descendente por fecha
     sessions = sorted(counts.items(), key=lambda kv: kv[0], reverse=True)[:limit]
     return [{"session_date": d, "count": c} for d, c in sessions]
-
-
---- 2) En api/main.py, junto a los otros endpoints intradía, añade: ---
-
-    @app.get("/intraday-sessions")
-    def list_intraday_sessions(ticker: str):
-        """Sesiones (fechas) que tienen snapshots guardados para el ticker."""
-        if not intraday_store.enabled():
-            raise HTTPException(503, "Supabase no está configurado.")
-        return {"ticker": ticker.upper(),
-                "sessions": intraday_store.list_sessions(ticker)}
