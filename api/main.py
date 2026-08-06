@@ -51,6 +51,7 @@ from validate import validate_models           # noqa: E402  ← predicho vs rea
 from psychology import psychology_analysis      # noqa: E402  ← Índice de Psicología (IPM)
 from intraday_ml import predict_session, fetch_today_bars  # noqa: E402  ← sesión intradía 15 min
 from intraday_ml import predict_session, fetch_today_bars, fetch_live_price  # noqa: E402
+from extended_ml import predict_curve_extended   # noqa: E402  ← modelo AH+PM
 import supabase_client as sb                     # noqa: E402
 import price_store                               # noqa: E402  ← caché de precios (Supabase)
 import intraday_store                            # noqa: E402  ← snapshots intradía (Supabase)
@@ -426,7 +427,22 @@ def intraday_live(ticker: str):
             return {"ticker": ticker.upper(), **fetch_live_price(ticker)}
         except Exception as e:
             raise HTTPException(400, str(e))
+@app.get("/predict-extended")
+def predict_extended(ticker: str, horizon: int = 30):
+        """Curva del modelo XGBoost EXTENDIDO (after-hours + premarket).
+        Independiente del /predict original; para comparar en el ensamble."""
+        try:
+            return predict_curve_extended(ticker, horizon)
+        except FileNotFoundError as e:
+            raise HTTPException(404, str(e))
+        except Exception as e:
+            raise HTTPException(400, str(e))
 
+@app.get("/models-extended")
+def list_models_extended():
+        """Tickers con modelo EXTENDIDO (RTH+AH+PM) entrenado."""
+        return {"available": sorted(p.stem.replace("xgb_ext_", "")
+                                    for p in ARTIFACT_DIR.glob("xgb_ext_*.joblib"))}
 
 @app.post("/predict")
 def predict(req: PredictRequest):
