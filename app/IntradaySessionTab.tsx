@@ -1,65 +1,44 @@
 "use client";
 
 /**
- * IntradaySessionTab.tsx — 🕐 Sesión intradía (ML 15 min) + velas + Elliott
- * =========================================================================
- * FIXES (feedback de Luis):
- *   1) SNAPSHOTS PERSISTENTES: cada «Calcular» (manual o auto) AÑADE una curva
- *      predicha con color propio (no reemplaza). Se comparan contra el precio
- *      real conforme avanza la sesión.
- *   2) Persistencia por ticker en localStorage: al cambiar de ticker se muestran
- *      las curvas guardadas de ese ticker (no se borran). Nueva sesión (otra
- *      fecha) reinicia la acumulación.
- *   3) Auto cada 15 min: ahora sí se ven las curvas nuevas (se acumulan).
- *   4) Velas reales + tooltip + Elliott real/proyectado (se conserva).
+ * IntradaySessionTab.tsx — 🕐 Sesión intradía (Fase B)
+ * ====================================================
+ * • Al elegir ticker → muestra VELAS reales + PRECIO EN VIVO (tipo Yahoo) y carga
+ *   los snapshots guardados en Supabase (no se borran al cambiar de ticker).
+ * • «↻ Calcular» → predice el resto de la sesión (velas + curva + Elliott).
+ * • «💾 Guardar» (explícito) → persiste la predicción actual en Supabase.
+ * • Cada snapshot guardado se superpone con su propio color.
+ * • «📊 Desempeño» → scorecard de cierre: MAPE, error de cierre, dirección y
+ *   SKILL vs. baseline "sin cambio", con veredicto honesto.
  *
- * Fuente: GET /predict-intraday?ticker=XXX   Env: NEXT_PUBLIC_ML_API_URL
+ * Endpoints: /predict-intraday · /quote · /intraday-snapshot ·
+ *            /intraday-snapshots · /intraday-scorecard
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_ML_API_URL || "http://localhost:8000";
-const REFRESH_MIN = 15;
-
-// Paleta para distinguir cada predicción guardada
 const PALETTE = ["#e67e22", "#2980b9", "#16a085", "#8e44ad", "#c0392b",
                  "#27ae60", "#d35400", "#2c3e50", "#f39c12", "#7f8c8d"];
-
-type Snap = {
-  id: string;
-  calcTime: string;       // "HH:MM:SS" (label local)
-  sessionDate: string;    // fecha de la sesión (para reiniciar si cambia el día)
-  barsReal: number;
-  color: string;
-  anchor: { time: string; close: number };   // último real cuando se calculó
-  points: { time: string; close: number }[]; // curva predicha
-};
 
 const hm = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const fecha = (iso: string) => new Date(iso).toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
 
-const loadLS = (k: string) => { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch { return null; } };
-const saveLS = (k: string, v: any) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* quota */ } };
-const dataKey = (t: string) => `intr_data::${t}`;
-const snapsKey = (t: string) => `intr_snaps::${t}`;
-
 export default function IntradaySessionTab() {
   const [models, setModels] = useState<string[]>([]);
   const [ticker, setTicker] = useState<string>("");
-  const [data, setData] = useState<any>(null);          // última respuesta (velas/Elliott/meta)
-  const [snaps, setSnaps] = useState<Snap[]>([]);        // predicciones acumuladas del ticker
+  const [data, setData] = useState<any>(null);        // última /predict-intraday
+  const [quote, setQuote] = useState<any>(null);      // /quote (precio en vivo)
+  const [snaps, setSnaps] = useState<any[]>([]);       // snapshots de Supabase
+  const [score, setScore] = useState<any>(null);       // /intraday-scorecard
   const [showElliott, setShowElliott] = useState(true);
-  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [showScore, setShowScore] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastCalc, setLastCalc] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
   const [hover, setHover] = useState<number | null>(null);
-  const timer = useRef<any>(null);
-  const tickerRef = useRef<string>("");                  // evita stale-closure en el auto-refresh
 
-  useEffect(() => { tickerRef.current = ticker; }, [ticker]);
-
-  // Poblar desplegable de tickers
   useEffect(() => {
     (async () => {
       try {
@@ -76,65 +55,76 @@ export default function IntradaySessionTab() {
     })();
   }, []);
 
-  // Al cambiar de TICKER → restaurar lo guardado (SIN recalcular)
+  // Al cambiar TICKER → velas + quote + snapshots guardados (sin borrar)
   useEffect(() => {
     if (!ticker) return;
-    setError(null); setHover(null);
-    setData(loadLS(dataKey(ticker)));
-    setSnaps(loadLS(snapsKey(ticker)) || []);
-    setLastCalc(null);
+    setError(null); setMsg(null); setHover(null); setScore(null); setShowScore(false);
+    cargarSesion(ticker);
+    cargarSnaps(ticker);
+    cargarQuote(ticker);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticker]);
 
-  async function calcular(tk: string) {
-    if (!tk) return;
-    setLoading(true); setError(null); setHover(null);
+  async function cargarSesion(tk: string) {
+    setLoading(true);
     try {
       const res = await fetch(`${API_URL}/predict-intraday?ticker=${tk}`);
       if (!res.ok) throw new Error((await res.json()).detail || "Error API intradía");
-      const resp = await res.json();
-      setData(resp);
-      saveLS(dataKey(tk), resp);
-      setLastCalc(new Date().toLocaleTimeString());
-
-      // Acumular como snapshot con color propio (reinicia si cambió la sesión)
-      setSnaps((prev) => {
-        let base = prev;
-        if (prev.length && prev[0].sessionDate !== resp.session_date) base = [];
-        const color = PALETTE[base.length % PALETTE.length];
-        const lastReal = resp.real?.[resp.real.length - 1];
-        const snap: Snap = {
-          id: `${Date.now()}`,
-          calcTime: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          sessionDate: resp.session_date,
-          barsReal: resp.bars_real,
-          color,
-          anchor: { time: lastReal?.time, close: resp.last_real_close },
-          points: (resp.predicted || []).map((p: any) => ({ time: p.time, close: p.close })),
-        };
-        const next = [...base, snap];
-        saveLS(snapsKey(tk), next);
-        return next;
-      });
-    } catch (e: any) { setError(e.message); }
+      setData(await res.json());
+    } catch (e: any) { setError(e.message); setData(null); }
     finally { setLoading(false); }
   }
 
-  function limpiar() {
-    setSnaps([]);
-    saveLS(snapsKey(ticker), []);
+  async function cargarQuote(tk: string) {
+    try {
+      const r = await fetch(`${API_URL}/quote?ticker=${tk}`);
+      setQuote(r.ok ? await r.json() : null);
+    } catch { setQuote(null); }
   }
 
-  // Auto cada 15 min — usa tickerRef para no capturar un ticker viejo
-  useEffect(() => {
-    if (timer.current) clearInterval(timer.current);
-    if (autoRefresh) {
-      timer.current = setInterval(() => {
-        if (tickerRef.current && !loading) calcular(tickerRef.current);
-      }, REFRESH_MIN * 60 * 1000);
-    }
-    return () => timer.current && clearInterval(timer.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRefresh]);
+  async function cargarSnaps(tk: string) {
+    try {
+      const r = await fetch(`${API_URL}/intraday-snapshots?ticker=${tk}`);
+      if (!r.ok) { setSnaps([]); return; }
+      const j = await r.json();
+      // color por orden de creación (calc_time asc)
+      const list = (j.snapshots || []).map((s: any, i: number) => ({ ...s, color: PALETTE[i % PALETTE.length] }));
+      setSnaps(list);
+    } catch { setSnaps([]); }
+  }
+
+  async function guardar() {
+    if (!data) return;
+    setSaving(true); setMsg(null); setError(null);
+    try {
+      const lastReal = data.real?.[data.real.length - 1];
+      const payload = {
+        ticker,
+        session_date: data.session_date,
+        bars_real: data.bars_real,
+        anchor_time: lastReal?.time || null,
+        anchor_close: data.last_real_close,
+        points: (data.predicted || []).map((p: any) => ({ time: p.time, close: p.close })),
+        dir_acc_model: data.model_meta?.directional_accuracy ?? null,
+      };
+      const res = await fetch(`${API_URL}/intraday-snapshot`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error((await res.json()).detail || "Error al guardar");
+      setMsg("✅ Predicción guardada en Supabase.");
+      await cargarSnaps(ticker);
+    } catch (e: any) { setError(e.message); }
+    finally { setSaving(false); }
+  }
+
+  async function verDesempeno() {
+    setShowScore(true); setScore(null); setError(null);
+    try {
+      const r = await fetch(`${API_URL}/intraday-scorecard?ticker=${ticker}`);
+      if (!r.ok) throw new Error((await r.json()).detail || "Error scorecard");
+      setScore(await r.json());
+    } catch (e: any) { setError(e.message); }
+  }
 
   // ---------- Geometría ----------
   const W = 960, H = 480, padL = 52, padR = 62, padT = 22, padB = 48;
@@ -149,10 +139,9 @@ export default function IntradaySessionTab() {
     const idxByTime: Record<string, number> = {};
     full.forEach((p, i) => (idxByTime[p.time] = i));
 
-    // Rango Y: velas reales + curvas de TODOS los snapshots + Elliott
     const vals: number[] = [];
     realBars.forEach((b) => { vals.push(b.high, b.low); });
-    snaps.forEach((s) => s.points.forEach((p) => vals.push(p.close)));
+    snaps.forEach((s) => (s.points || []).forEach((p: any) => vals.push(p.close)));
     full.slice(nReal).forEach((p) => vals.push(p.close));
     const eReal = data.elliott_real || {}, eFull = data.elliott_full || {};
     [...(eReal.elliott?.points || []), ...(eFull.elliott?.points || []),
@@ -168,14 +157,18 @@ export default function IntradaySessionTab() {
     const boundaryX = padL + nReal * cw;
 
     const xticks = Array.from({ length: 7 }).map((_, k) => {
-      const i = Math.round((n - 1) * (k / 6));
-      return { i, time: full[i].time };
+      const i = Math.round((n - 1) * (k / 6)); return { i, time: full[i].time };
     });
 
     const zzFull = (eFull.zigzag || []) as any[];
     const wavesReal = eReal.elliott?.found ? eReal.elliott.points.filter((w: any) => w.label !== "0") : [];
     const wavesFull = eFull.elliott?.found ? eFull.elliott.points.filter((w: any) => w.label !== "0") : [];
     const abcFull = eFull.abc?.found ? eFull.abc.points : [];
+
+    // línea predicha "en vivo" (la del cálculo actual)
+    const predLine = full.slice(Math.max(0, nReal - 1)).map((p, k) => {
+      const i = (nReal - 1) + k; return `${k === 0 ? "M" : "L"} ${cx(i)} ${y(p.close)}`;
+    }).join(" ");
 
     return (
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ background: "#fff", border: "1px solid #eee", borderRadius: 8 }}
@@ -192,49 +185,38 @@ export default function IntradaySessionTab() {
         ))}
         <text x={padL} y={H - 6} fontSize={10} fill="#bbb">Hora ({fecha(full[0].time)})</text>
 
-        {/* Frontera "ahora" */}
         <line x1={boundaryX} x2={boundaryX} y1={padT} y2={H - padB} stroke="#999" strokeDasharray="4 3" opacity={0.5} />
         <text x={boundaryX} y={padT - 5} fontSize={9} fill="#999" textAnchor="middle">ahora</text>
 
-        {/* ZigZag de la sesión completa (tenue) */}
         {showElliott && zzFull.length > 1 && (
           <path d={zzFull.map((z: any, i: number) => {
             const j = idxByTime[z.time]; return `${i === 0 ? "M" : "L"} ${cx(j ?? 0)} ${y(z.price)}`;
           }).join(" ")} fill="none" stroke="#8e44ad" strokeWidth={1} opacity={0.28} />
         )}
 
-        {/* VELAS reales (OHLC) */}
+        {/* VELAS reales */}
         {realBars.map((b, i) => {
-          const up = b.close >= b.open;
-          const col = up ? "#1e824c" : "#c0392b";
-          const bodyTop = y(Math.max(b.open, b.close));
-          const bodyBot = y(Math.min(b.open, b.close));
+          const up = b.close >= b.open; const col = up ? "#1e824c" : "#c0392b";
+          const bt = y(Math.max(b.open, b.close)), bb = y(Math.min(b.open, b.close));
           return (<g key={`c${i}`}>
             <line x1={cx(i)} x2={cx(i)} y1={y(b.high)} y2={y(b.low)} stroke={col} strokeWidth={1} />
-            <rect x={cx(i) - cw * 0.32} y={bodyTop} width={cw * 0.64}
-                  height={Math.max(bodyBot - bodyTop, 1.2)} fill={col} />
+            <rect x={cx(i) - cw * 0.32} y={bt} width={cw * 0.64} height={Math.max(bb - bt, 1.2)} fill={col} />
           </g>);
         })}
 
-        {/* ── CURVAS PREDICHAS ACUMULADAS (una por snapshot, cada una su color) ── */}
-        {snaps.map((s, si) => {
-          const pts = [s.anchor, ...s.points].filter((p) => p && idxByTime[p.time] != null);
+        {/* Snapshots GUARDADOS (Supabase), cada uno su color */}
+        {snaps.map((s) => {
+          const anchor = { time: s.anchor_time, close: s.anchor_close };
+          const pts = [anchor, ...(s.points || [])].filter((p: any) => p && idxByTime[p.time] != null);
           if (pts.length < 2) return null;
-          const d = pts.map((p, k) => `${k === 0 ? "M" : "L"} ${cx(idxByTime[p.time])} ${y(p.close)}`).join(" ");
-          const isLast = si === snaps.length - 1;
-          return (
-            <g key={`snap${s.id}`}>
-              <path d={d} fill="none" stroke={s.color} strokeWidth={isLast ? 2.2 : 1.5}
-                    strokeDasharray={isLast ? "5 4" : "3 3"} opacity={isLast ? 1 : 0.75} />
-              {isLast && s.points.map((p, k) => {
-                const i = idxByTime[p.time]; if (i == null) return null;
-                return <circle key={`sp${k}`} cx={cx(i)} cy={y(p.close)} r={1.6} fill={s.color} />;
-              })}
-            </g>
-          );
+          const d = pts.map((p: any, k: number) => `${k === 0 ? "M" : "L"} ${cx(idxByTime[p.time])} ${y(p.close)}`).join(" ");
+          return <path key={s.id} d={d} fill="none" stroke={s.color} strokeWidth={1.5} strokeDasharray="3 3" opacity={0.7} />;
         })}
 
-        {/* Elliott sobre la sesión COMPLETA — naranja hueco */}
+        {/* Predicción EN VIVO (cálculo actual, más marcada) */}
+        <path d={predLine} fill="none" stroke="#111" strokeWidth={2} strokeDasharray="5 4" opacity={0.85} />
+
+        {/* Elliott sesión completa (naranja hueco) */}
         {showElliott && wavesFull.map((w: any, k: number) => {
           const i = idxByTime[w.time]; if (i == null) return null;
           return (<g key={`ef${k}`}>
@@ -246,8 +228,7 @@ export default function IntradaySessionTab() {
           const i = idxByTime[w.time]; if (i == null) return null;
           return (<text key={`abc${k}`} x={cx(i)} y={y(w.price) + 18} fontSize={12} fontWeight={700} fill="#d35400" textAnchor="middle">{w.label}</text>);
         })}
-
-        {/* Elliott sobre las barras REALES — morado sólido (encima) */}
+        {/* Elliott sobre barras reales (morado sólido) */}
         {showElliott && wavesReal.map((w: any, k: number) => {
           const i = idxByTime[w.time]; if (i == null) return null;
           return (<g key={`er${k}`}>
@@ -256,17 +237,14 @@ export default function IntradaySessionTab() {
           </g>);
         })}
 
-        {/* Capa de HOVER + tooltip */}
+        {/* Hover + tooltip */}
         {full.map((_, i) => (
           <rect key={`h${i}`} x={padL + i * cw} y={padT} width={cw} height={plotH}
                 fill="transparent" onMouseEnter={() => setHover(i)} />
         ))}
         {hover != null && (() => {
-          const i = hover;
-          const isReal = i < nReal;
-          const b = isReal ? realBars[i] : null;
-          const yv = isReal ? b.close : full[i].close;
-          const gx = cx(i);
+          const i = hover; const isReal = i < nReal; const b = isReal ? realBars[i] : null;
+          const yv = isReal ? b.close : full[i].close; const gx = cx(i);
           const lines = isReal
             ? [hm(full[i].time), `O ${b.open}  H ${b.high}`, `L ${b.low}  C ${b.close}`, `Vol ${b.volume.toLocaleString()}`]
             : [hm(full[i].time), `Predicho: ${full[i].close}`];
@@ -290,11 +268,14 @@ export default function IntradaySessionTab() {
   }
 
   const ell = data?.elliott_full?.elliott;
-  const dirAcc = data?.model_meta?.directional_accuracy;
+  const chg = quote?.change ?? null;
+  const chgPct = quote?.change_pct ?? null;
+  const up = (chg ?? 0) >= 0;
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", fontFamily: "system-ui" }}>
-      <div style={{ display: "flex", gap: 10, marginBottom: 14, alignItems: "end", flexWrap: "wrap" }}>
+      {/* Controles */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 12, alignItems: "end", flexWrap: "wrap" }}>
         <label>
           <div style={{ fontSize: 12, color: "#666" }}>Ticker</div>
           <select value={ticker} onChange={(e) => setTicker(e.target.value)}
@@ -303,81 +284,142 @@ export default function IntradaySessionTab() {
             {models.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
         </label>
-        <button onClick={() => calcular(ticker)} disabled={loading || !ticker}
-          style={{ padding: "10px 20px", background: "#111", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>
+        <button onClick={() => cargarSesion(ticker)} disabled={loading || !ticker}
+          style={{ padding: "10px 18px", background: "#111", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>
           {loading ? "Calculando…" : "↻ Calcular"}
         </button>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#666" }}>
-          <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
-          Auto cada {REFRESH_MIN} min
-        </label>
+        <button onClick={guardar} disabled={saving || !data}
+          style={{ padding: "10px 16px", background: "#8e44ad", color: "#fff", border: "none", borderRadius: 6, cursor: data ? "pointer" : "not-allowed" }}>
+          {saving ? "Guardando…" : "💾 Guardar"}
+        </button>
+        <button onClick={verDesempeno} disabled={!ticker}
+          style={{ padding: "10px 16px", background: "#1e824c", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>
+          📊 Desempeño
+        </button>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#666" }}>
           <input type="checkbox" checked={showElliott} onChange={(e) => setShowElliott(e.target.checked)} />
           Mostrar Elliott
         </label>
-        {snaps.length > 0 && (
-          <button onClick={limpiar}
-            style={{ padding: "8px 12px", background: "#fff", color: "#c0392b", border: "1px solid #eecccc", borderRadius: 6, cursor: "pointer", fontSize: 12 }}>
-            🗑️ Limpiar guardadas ({snaps.length})
-          </button>
-        )}
-        {lastCalc && <span style={{ fontSize: 11, color: "#999" }}>Calculado {lastCalc}</span>}
       </div>
 
-      {error && <p style={{ color: "#c0392b" }}>⚠️ {error}</p>}
-
-      {data && dirAcc != null && (
-        <div style={{ padding: "8px 12px", marginBottom: 10, borderRadius: 8, fontSize: 12,
-          background: "#fff8e1", borderLeft: "4px solid #f39c12", color: "#7a5c00" }}>
-          ⚠️ <b>Señal intradía experimental</b> — precisión direccional del modelo: {(dirAcc * 100).toFixed(0)}%.
-          Úsala como <b>contexto de la sesión</b> (forma y estructura), no como pronóstico de precio.
+      {/* HEADER de precio EN VIVO (tipo Yahoo) */}
+      {quote && quote.price != null && (
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 15, fontWeight: 700 }}>{quote.ticker}</span>
+          <span style={{ fontSize: 26, fontWeight: 700 }}>${Number(quote.price).toFixed(2)}</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: up ? "#1e824c" : "#c0392b" }}>
+            {up ? "▲" : "▼"} {chg != null ? `${up ? "+" : ""}${Number(chg).toFixed(2)}` : "—"}
+            {chgPct != null ? ` (${up ? "+" : ""}${Number(chgPct).toFixed(2)}%)` : ""}
+          </span>
+          <span style={{ fontSize: 11, color: "#999" }}>
+            {quote.day_open != null && `Apertura ${quote.day_open} · `}
+            {quote.day_high != null && `Máx ${quote.day_high} · `}
+            {quote.day_low != null && `Mín ${quote.day_low}`}
+          </span>
+          <span style={{ fontSize: 10, color: "#bbb" }}>⏱ ~15 min de retraso (Polygon)</span>
         </div>
       )}
+
+      {error && <p style={{ color: "#c0392b" }}>⚠️ {error}</p>}
+      {msg && <p style={{ color: "#1e824c", fontSize: 13 }}>{msg}</p>}
 
       {!data && !loading && !error && (
         <div style={{ padding: "56px 20px", textAlign: "center", background: "#f7f9fb",
                       borderRadius: 12, border: "1px dashed #d5dce3", color: "#7f8c8d" }}>
           <div style={{ fontSize: 34, marginBottom: 8 }}>🕐</div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: "#5a6b7b" }}>Elige un ticker y pulsa «↻ Calcular»</div>
-          <div style={{ fontSize: 13, marginTop: 4 }}>Cada cálculo guarda su predicción con un color; se comparan contra el precio real que avanza.</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "#5a6b7b" }}>Elige un ticker</div>
+          <div style={{ fontSize: 13, marginTop: 4 }}>Verás velas reales + precio en vivo. Pulsa 💾 para guardar predicciones y 📊 para medir su desempeño.</div>
         </div>
       )}
 
       {data && (
         <>
-          <div style={{ display: "flex", gap: 16, marginBottom: 10, fontSize: 13, flexWrap: "wrap" }}>
-            <span><strong>{data.ticker}</strong></span>
+          <div style={{ display: "flex", gap: 16, marginBottom: 8, fontSize: 13, flexWrap: "wrap" }}>
             <span>📅 Sesión: <strong>{fecha(data.full[0].time)}</strong></span>
-            <span>Último real: <strong>${data.last_real_close}</strong></span>
             <span style={{ color: "#666" }}>{data.bars_real} velas · {data.bars_predicted} predichas</span>
             {ell?.found && <span style={{ color: "#8e44ad" }}>🌊 Elliott {ell.tentative ? "(tentativo)" : `(${ell.confidence}%)`}</span>}
+            {snaps.length > 0 && <span style={{ color: "#666" }}>💾 {snaps.length} guardadas</span>}
           </div>
 
           {render()}
 
-          {/* Leyenda de predicciones guardadas (multicolor) */}
+          {/* Leyenda de predicciones guardadas */}
           {snaps.length > 0 && (
             <div style={{ marginTop: 10, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-              <span style={{ fontSize: 12, color: "#666" }}>Predicciones guardadas:</span>
-              {snaps.map((s, i) => (
-                <span key={s.id} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12,
-                  color: i === snaps.length - 1 ? "#111" : "#777", fontWeight: i === snaps.length - 1 ? 700 : 400 }}>
+              <span style={{ fontSize: 12, color: "#666" }}>Guardadas:</span>
+              {snaps.map((s) => (
+                <span key={s.id} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "#777" }}>
                   <span style={{ width: 14, height: 3, background: s.color, display: "inline-block", borderRadius: 2 }} />
-                  {s.calcTime}{i === snaps.length - 1 ? " (última)" : ""}
+                  {hm(s.calc_time)}
                 </span>
               ))}
             </div>
           )}
 
-          <div style={{ display: "flex", gap: 16, marginTop: 10, fontSize: 12, color: "#555", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 12, color: "#555", flexWrap: "wrap" }}>
             <span style={{ color: "#1e824c" }}>▮ vela alcista</span>
             <span style={{ color: "#c0392b" }}>▮ vela bajista</span>
+            <span style={{ color: "#111" }}>┈ predicción actual</span>
             <span style={{ color: "#8e44ad" }}>● Elliott (real)</span>
-            <span style={{ color: "#e67e22" }}>◯ Elliott (sesión proyectada)</span>
+            <span style={{ color: "#e67e22" }}>◯ Elliott (proyectada)</span>
           </div>
 
-          <p style={{ fontSize: 11, color: "#999", marginTop: 10 }}>ⓘ {data.note}</p>
+          <p style={{ fontSize: 11, color: "#999", marginTop: 8 }}>ⓘ {data.note}</p>
         </>
+      )}
+
+      {/* SCORECARD de cierre */}
+      {showScore && (
+        <div style={{ marginTop: 20, padding: 16, background: "#f7f9fb", borderRadius: 10, border: "1px solid #e5eaf0" }}>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>📊 Desempeño de la sesión — {ticker}</div>
+          {!score ? <p style={{ fontSize: 13, color: "#999" }}>Cargando scorecard…</p> : (
+            <>
+              {score.verdict && (
+                <div style={{ padding: 10, marginBottom: 10, borderRadius: 8, fontSize: 13,
+                  background: (score.avg_skill ?? 0) > 0.05 ? "#eafaf1" : (score.avg_skill ?? 0) < -0.05 ? "#fbeeee" : "#fff8e1",
+                  borderLeft: `4px solid ${(score.avg_skill ?? 0) > 0.05 ? "#1e824c" : (score.avg_skill ?? 0) < -0.05 ? "#c0392b" : "#f39c12"}` }}>
+                  <b>Veredicto:</b> {score.verdict}
+                  {score.avg_skill != null && <span style={{ color: "#666" }}> · Skill medio vs. baseline: <b>{(score.avg_skill * 100).toFixed(0)}%</b></span>}
+                </div>
+              )}
+              {score.rows?.length ? (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: "#eef2f6" }}>
+                        <th style={{ textAlign: "left", padding: "8px 10px" }}>Calculado</th>
+                        <th style={{ textAlign: "right", padding: "8px 10px" }}>Barras eval.</th>
+                        <th style={{ textAlign: "right", padding: "8px 10px" }}>MAPE modelo</th>
+                        <th style={{ textAlign: "right", padding: "8px 10px" }}>MAPE baseline</th>
+                        <th style={{ textAlign: "right", padding: "8px 10px" }}>Skill</th>
+                        <th style={{ textAlign: "right", padding: "8px 10px" }}>Err. cierre</th>
+                        <th style={{ textAlign: "center", padding: "8px 10px" }}>Dir.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {score.rows.map((r: any) => (
+                        <tr key={r.id} style={{ borderBottom: "1px solid #eef2f6" }}>
+                          <td style={{ padding: "7px 10px" }}>{hm(r.calc_time)}</td>
+                          <td style={{ textAlign: "right", padding: "7px 10px" }}>{r.evaluated_bars}</td>
+                          <td style={{ textAlign: "right", padding: "7px 10px" }}>{r.mape == null ? "—" : `${(r.mape * 100).toFixed(2)}%`}</td>
+                          <td style={{ textAlign: "right", padding: "7px 10px", color: "#888" }}>{r.mape_baseline == null ? "—" : `${(r.mape_baseline * 100).toFixed(2)}%`}</td>
+                          <td style={{ textAlign: "right", padding: "7px 10px", fontWeight: 700, color: r.skill == null ? "#999" : r.skill > 0 ? "#1e824c" : "#c0392b" }}>
+                            {r.skill == null ? "—" : `${r.skill > 0 ? "+" : ""}${(r.skill * 100).toFixed(0)}%`}
+                          </td>
+                          <td style={{ textAlign: "right", padding: "7px 10px" }}>{r.close_err == null ? "—" : `${(r.close_err * 100).toFixed(2)}%`}</td>
+                          <td style={{ textAlign: "center", padding: "7px 10px" }}>{r.dir_ok == null ? "—" : r.dir_ok ? "✅" : "❌"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : <p style={{ fontSize: 13, color: "#999" }}>Sin snapshots evaluables aún. Guarda predicciones durante la sesión y vuelve al cierre.</p>}
+              <p style={{ fontSize: 11, color: "#999", marginTop: 10 }}>
+                ⓘ <b>Skill</b> = cuánto le gana el modelo al baseline “sin cambio” (precio se queda en el ancla). Skill &gt; 0 = el modelo aporta; ≤ 0 = no aportó. <b>MAPE</b> = error medio del precio. Análisis educativo, no recomendación.
+              </p>
+            </>
+          )}
+        </div>
       )}
     </div>
   );
