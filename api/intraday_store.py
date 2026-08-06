@@ -160,3 +160,32 @@ def score_snapshots(snapshots: list[dict], real_bars: list[dict]) -> dict:
 
     return {"rows": rows, "avg_skill": round(sum(r["skill"] for r in scored) / len(scored), 4) if scored else None,
             "n_scored": len(scored), "verdict": verdict}
+    def list_sessions(ticker: str, limit: int = 60) -> list[dict]:
+    """Fechas de sesión distintas que tienen snapshots para el ticker,
+    con cuántos snapshots hay en cada una (para el dropdown)."""
+    if not _ENABLED:
+        return []
+    r = requests.get(f"{SUPABASE_URL}/rest/v1/intraday_snapshots", headers=_h(),
+                     params={"ticker": f"eq.{ticker.upper()}",
+                             "order": "session_date.desc,calc_time.asc",
+                             "select": "session_date"}, timeout=20)
+    if not r.ok:
+        return []
+    counts: dict = {}
+    for row in r.json():
+        d = row["session_date"]
+        counts[d] = counts.get(d, 0) + 1
+    # orden descendente por fecha
+    sessions = sorted(counts.items(), key=lambda kv: kv[0], reverse=True)[:limit]
+    return [{"session_date": d, "count": c} for d, c in sessions]
+
+
+--- 2) En api/main.py, junto a los otros endpoints intradía, añade: ---
+
+    @app.get("/intraday-sessions")
+    def list_intraday_sessions(ticker: str):
+        """Sesiones (fechas) que tienen snapshots guardados para el ticker."""
+        if not intraday_store.enabled():
+            raise HTTPException(503, "Supabase no está configurado.")
+        return {"ticker": ticker.upper(),
+                "sessions": intraday_store.list_sessions(ticker)}
