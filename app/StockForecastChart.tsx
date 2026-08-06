@@ -3,15 +3,13 @@
 /**
  * StockForecastChart.tsx — Predicción + Validación + Simulador de inversión
  * =========================================================================
- * • Curvas: Histórico · XGBoost · MLP · XGBoost+Sentimiento · Sentimiento puro ·
- *   Psicología contrarian (A) · Psicología ML (B) · Mediana Monte Carlo + bandas
- * • Noticias de Polygon desplegadas abajo
- * • Zoom In/Out/Reset
- * • Vista Validación (predicho vs real)
- * • SIMULADOR DE INVERSIÓN (cantidad/monto + comparativa + riesgo MC)
+ * • Curvas: Histórico · XGBoost · XGBoost Extendido (AH+PM) · MLP ·
+ *   XGBoost+Sentimiento · Sentimiento puro · Psicología A/B · Mediana MC + bandas
+ * • Noticias de Polygon · Zoom · Vista Validación · Simulador de inversión
  *
  * CAMBIO UX: el cálculo NO se dispara solo al cambiar el ticker; solo se pobla
  * el desplegable. Nada se calcula hasta pulsar «↻ Calcular».
+ * NUEVO: curva del modelo EXTENDIDO (RTH+AH+PM) para comparar con el original.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -28,6 +26,7 @@ const SENT_COLOR: Record<string, string> = { positive: "#1e824c", negative: "#c0
 
 const CURVES = [
   { key: "xgb", label: "XGBoost", color: "#e67e22" },
+  { key: "ext", label: "XGBoost Extendido (AH+PM)", color: "#0a84ff" },
   { key: "mlp", label: "Red Neuronal (MLP)", color: "#16a085" },
   { key: "mlSent", label: "XGBoost + Sentimiento", color: "#8e44ad" },
   { key: "sentOnly", label: "Sentimiento puro", color: "#d35400" },
@@ -49,6 +48,7 @@ export default function StockForecastChart() {
   const [riskNote, setRiskNote] = useState<string>("");
   const [hasMlp, setHasMlp] = useState(false);
   const [mlpWarning, setMlpWarning] = useState<string | null>(null);
+  const [hasExt, setHasExt] = useState(false);
   const [val, setVal] = useState<any[]>([]);
   const [valMetrics, setValMetrics] = useState<any>(null);
   const [calculated, setCalculated] = useState(false);   // ¿ya se pulsó Calcular?
@@ -80,13 +80,14 @@ export default function StockForecastChart() {
   async function run(tk: string, h: number) {
     setLoading(true); setError(null); setZoom(1);
     try {
-      const [fRes, mRes, sRes, vRes, pRes] = await Promise.all([
+      const [fRes, mRes, sRes, vRes, pRes, eRes] = await Promise.all([
         fetch(`${API_URL}/forecast`, { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ticker: tk, horizon: h, n_sims: 10000 }) }),
         fetch(`${API_URL}/predict-mlp?ticker=${tk}&horizon=${h}`),
         fetch(`${API_URL}/forecast-sentiment?ticker=${tk}&horizon=${h}`),
         fetch(`${API_URL}/validate?ticker=${tk}&days=${Math.max(30, h * 2)}`),
         fetch(`${API_URL}/psychology?ticker=${tk}&horizon=${h}`),
+        fetch(`${API_URL}/predict-extended?ticker=${tk}&horizon=${h}`),
       ]);
       if (!fRes.ok) throw new Error((await fRes.json()).detail || "Error en /forecast");
       const fj = await fRes.json();
@@ -118,6 +119,13 @@ export default function StockForecastChart() {
         (pj.contrarian?.curve || []).forEach((p: any) => (rows[p.date] = { ...(rows[p.date] || { date: p.date }), psyA: p.close }));
         (pj.learned?.curve || []).forEach((p: any) => (rows[p.date] = { ...(rows[p.date] || { date: p.date }), psyB: p.close }));
       }
+      // ── Modelo EXTENDIDO (RTH + AH + PM) ──
+      if (eRes.ok) {
+        const ej = await eRes.json();
+        (ej.prediction || []).forEach((p: any) => (rows[p.date] = { ...(rows[p.date] || { date: p.date }), ext: p.close }));
+        setHasExt(true);
+      } else { setHasExt(false); }
+
       const merged = Object.values(rows).sort((a: any, b: any) => a.date.localeCompare(b.date));
       setFwd(merged);
       setSummary({ ...sim.terminal });
@@ -262,6 +270,7 @@ export default function StockForecastChart() {
                   <Area yAxisId="price" dataKey="band95" stackId="b" stroke="none" fill="#3498db" fillOpacity={0.10} name="Escenario P5–P95" />
                   <Line yAxisId="price" dataKey="historical" stroke="#111" dot={false} strokeWidth={2} name="Histórico" connectNulls />
                   <Line yAxisId="price" dataKey="xgb" stroke="#e67e22" dot={false} strokeWidth={2} strokeDasharray="5 4" name="XGBoost" connectNulls />
+                  <Line yAxisId="price" dataKey="ext" stroke="#0a84ff" dot={false} strokeWidth={2} strokeDasharray="2 2" name="XGBoost Extendido (AH+PM)" connectNulls />
                   <Line yAxisId="price" dataKey="mlp" stroke="#16a085" dot={false} strokeWidth={2} name="Red Neuronal (MLP)" connectNulls />
                   <Line yAxisId="price" dataKey="mlSent" stroke="#8e44ad" dot={false} strokeWidth={2} name="XGBoost + Sentimiento" connectNulls />
                   <Line yAxisId="price" dataKey="sentOnly" stroke="#d35400" dot={false} strokeWidth={1.6} strokeDasharray="1 3" name="Sentimiento puro" connectNulls />
@@ -281,6 +290,7 @@ export default function StockForecastChart() {
               )}
               {!hasMlp && <p style={{ fontSize: 12, color: "#b8860b", marginTop: 8 }}>ⓘ {ticker} no tiene modelo MLP entrenado (curva verde oculta).</p>}
               {hasMlp && mlpWarning && <p style={{ fontSize: 12, color: "#b8860b", marginTop: 8 }}>⚠️ Curva MLP de {ticker}: {mlpWarning}</p>}
+              {!hasExt && <p style={{ fontSize: 12, color: "#b8860b", marginTop: 4 }}>ⓘ {ticker} no tiene modelo Extendido (AH+PM) entrenado (curva azul oculta).</p>}
 
               {/* ================= SIMULADOR DE INVERSIÓN ================= */}
               <div style={{ marginTop: 22, padding: 16, background: "#f7f9fb", borderRadius: 10, border: "1px solid #e5eaf0" }}>
