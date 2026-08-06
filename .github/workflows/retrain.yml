@@ -1,4 +1,4 @@
-name: Retrain models (XGBoost + MLP + Psychology + Intraday)
+name: Retrain models (XGBoost + MLP + Psychology + Intraday + Extended)
 
 on:
   schedule:
@@ -22,6 +22,8 @@ env:
   # Intradía (plan Starter): subconjunto LÍQUIDO. Vacío = no entrena intradía.
   INTRADAY_TICKERS: "NVDA TSM AVGO META QQQ AMAT SNDK IGV MU"
   INTRADAY_DAYS: "120"
+  # Extendido (RTH+AH+PM, plan Starter): subconjunto sensible a earnings/gaps.
+  EXTENDED_TICKERS: "NVDA TSM AVGO META QQQ AMAT MU"
 
 # Permite que el GITHUB_TOKEN haga push de los artefactos al repo.
 # (Además: Settings → Actions → General → Workflow permissions → Read and write.)
@@ -118,6 +120,25 @@ jobs:
             sleep 5
           done
 
+      # ------------------------------------------------------------------- #
+      # MODELO EXTENDIDO (RTH + AFTER-HOURS + PREMARKET) — sensible a earnings/gaps.
+      # Independiente del diario original: genera xgb_ext_<T>. Si falla, no afecta.
+      # Requiere plan Starter (barras de 5-min con horario extendido).
+      # ------------------------------------------------------------------- #
+      - name: Train extended (RTH+AH+PM) — earnings/gaps
+        if: ${{ env.EXTENDED_TICKERS != '' }}
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+        run: |
+          echo "Entrenando modelos extendidos (RTH+AH+PM): $EXTENDED_TICKERS"
+          for T in $EXTENDED_TICKERS; do
+            echo "::group::Extendido $T"
+            python training/train_xgb_extended.py --ticker "$T" --years "$YEARS" \
+              || echo "::warning::train_xgb_extended falló para $T"
+            echo "::endgroup::"
+            sleep 8
+          done
+
       - name: Verify artifacts exist
         run: |
           COUNT=$(ls api/artifacts/*.joblib 2>/dev/null | wc -l)
@@ -141,7 +162,7 @@ jobs:
             echo "Sin cambios que commitear."
             exit 0
           fi
-          git commit -m "chore: retrain XGBoost + MLP + Psychology + Intraday + backtest [skip ci]"
+          git commit -m "chore: retrain XGBoost + MLP + Psychology + Intraday + Extended + backtest [skip ci]"
           for i in 1 2 3; do
             if git push origin HEAD:main; then
               echo "Push OK en intento $i"
