@@ -93,7 +93,8 @@ def fetch_today_bars(ticker: str) -> pd.DataFrame:
     df = filter_regular_session(df)
     last_day = df["dt_et"].dt.date.max()
     return df[df["dt_et"].dt.date == last_day].reset_index(drop=True)
-    
+
+
 def fetch_bars_for_date(ticker: str, session_date: str) -> pd.DataFrame:
     """Barras de 15 min (sesión regular) de una FECHA específica (YYYY-MM-DD)."""
     if not POLYGON_API_KEY:
@@ -177,23 +178,24 @@ def predict_session(ticker: str) -> dict:
     out["note"] = ("Curva recursiva de 15 min hasta el cierre (16:00 ET), acotada por clamp. "
                    "Elliott experimental. Señal intradía débil (Dir.Acc ~50%); contexto, no certeza.")
     return out
-    
-def fetch_live_price(ticker: str) -> dict:    
-"""Último precio (barra de 1 min) de la sesión en curso. TTL corto."""
-if not POLYGON_API_KEY:
-raise RuntimeError("Falta POLYGON_API_KEY")
-today = dt.date.today()
-url = (f"https://api.polygon.io/v2/aggs/ticker/{ticker.upper()}/range/1/minute/"
-f"{today.isoformat()}/{today.isoformat()}"
-f"?adjusted=true&sort=asc&limit=50000&apiKey={POLYGON_API_KEY}")
-res = get_json(url, ttl=45).get("results", [])   # ← 45 s, NO 900
-if not res:
-return {"price": None, "time": None, "day_open": None, "bars": 0}
-last = res[-1]
-t_et = pd.to_datetime(last["t"], unit="ms", utc=True).tz_convert("America/New_York")
-return {
-"price": round(float(last["c"]), 4),
-"time": t_et.isoformat(),
-"day_open": round(float(res[0]["o"]), 4),
-"bars": len(res),
-}
+
+
+def fetch_live_price(ticker: str) -> dict:
+    """Último precio (barra de 1 min) de la sesión en curso. TTL corto."""
+    if not POLYGON_API_KEY:
+        raise RuntimeError("Falta POLYGON_API_KEY")
+    today = dt.date.today()
+    url = (f"https://api.polygon.io/v2/aggs/ticker/{ticker.upper()}/range/1/minute/"
+           f"{today.isoformat()}/{today.isoformat()}"
+           f"?adjusted=true&sort=asc&limit=50000&apiKey={POLYGON_API_KEY}")
+    res = get_json(url, ttl=45).get("results", [])   # ← 45 s, NO 900
+    if not res:
+        return {"price": None, "time": None, "day_open": None, "bars": 0}
+    last = res[-1]
+    t_et = pd.to_datetime(last["t"], unit="ms", utc=True).tz_convert("America/New_York")
+    return {
+        "price": round(float(last["c"]), 4),
+        "time": t_et.isoformat(),
+        "day_open": round(float(res[0]["o"]), 4),
+        "bars": len(res),
+    }
