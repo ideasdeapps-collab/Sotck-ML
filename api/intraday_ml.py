@@ -6,8 +6,10 @@ RESTO del día hasta el cierre (16:00 ET), con clamp anti-explosión. Además
 calcula Elliott sobre (a) las barras reales y (b) la sesión completa
 (real + predicha) — para superponerlas con estilos distintos (opción C).
 
-CAMBIO: las barras REALES ahora incluyen OHLC (open/high/low/close/volume)
-para poder dibujar VELAS con valores reales de Polygon en el frontend.
+FIX (Elliott en todos los tickers): el umbral del ZigZag ya no es fijo. Ahora es
+ADAPTATIVO a la volatilidad de CADA serie (real y completa por separado), con un
+piso bajo, para que los tickers poco volátiles o las curvas predichas suavizadas
+por el clamp también produzcan swings suficientes → conteo 1-2-3-4-5 visible.
 """
 
 from __future__ import annotations
@@ -33,8 +35,28 @@ POLYGON_API_KEY = os.getenv("POLYGON_API_KEY")
 ARTIFACT_DIR = Path(__file__).resolve().parent / "artifacts"
 _CACHE: dict = {}
 
-# Umbral ZigZag para intradía (fino; ~0.15% por swing)
-INTRADAY_ZIGZAG_PCT = 0.0015
+# Umbral ZigZag intradía: adaptativo a la volatilidad de la serie, acotado.
+ZZ_FLOOR = 0.0008   # piso: 0.08% por swing (permite ver ondas en tickers tranquilos)
+ZZ_CEIL = 0.010     # techo: 1.0% (evita ruido en tickers muy volátiles)
+ZZ_FACTOR = 0.6     # fracción de la desviación de retornos usada como umbral
+
+
+def _adaptive_zigzag_pct(closes: list[float]) -> float:
+    """Umbral ~0.6·std(retornos) de la serie, acotado a [ZZ_FLOOR, ZZ_CEIL]."""
+    c = np.asarray([p for p in closes if p is not None], dtype=float)
+    if len(c) < 3:
+        return ZZ_FLOOR
+    rets = np.diff(c) / c[:-1]
+    sd = float(np.std(rets))
+    return float(min(max(ZZ_FACTOR * sd, ZZ_FLOOR), ZZ_CEIL))
+
+
+def _elliott(series: list[dict]) -> dict:
+    """Elliott sobre una serie de cierres, con umbral ZigZag adaptativo."""
+    if len(series) < 3:
+        return {"zigzag": [], "elliott": {"found": False}, "abc": {"found": False}}
+    pct = _adaptive_zigzag_pct([s["close"] for s in series])
+    return elliott_from_candles(series, pct=pct)
 
 
 def load_intraday_model(ticker: str):
@@ -112,14 +134,13 @@ def _predict_session_from_bars(model, meta: dict, today: pd.DataFrame) -> dict:
         "volume": int(r["volume"]),
     } for _, r in today.iterrows()]
 
-    # 'full' = cierres (real+predicho) para Elliott y para la línea de continuidad
     full = [{"time": r["time"], "close": r["close"]} for r in real_rows] + \
            [{"time": r["time"], "close": r["close"]} for r in pred_rows]
 
-    # ── Elliott (opción C): sobre reales y sobre la sesión completa ──
+    # ── Elliott (opción C): umbral ADAPTATIVO por serie ──
     real_closes = [{"time": r["time"], "close": r["close"]} for r in real_rows]
-    elliott_real = elliott_from_candles(real_closes, pct=INTRADAY_ZIGZAG_PCT) if len(real_closes) >= 3 else {"zigzag": [], "elliott": {"found": False}, "abc": {"found": False}}
-    elliott_full = elliott_from_candles(full, pct=INTRADAY_ZIGZAG_PCT) if len(full) >= 3 else {"zigzag": [], "elliott": {"found": False}, "abc": {"found": False}}
+    elliott_real = _elliott(real_closes)
+    elliott_full = _elliott(full)
 
     return {
         "session_date": pd.Timestamp(today["dt_et"].iloc[0]).date().isoformat(),
