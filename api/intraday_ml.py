@@ -93,6 +93,21 @@ def fetch_today_bars(ticker: str) -> pd.DataFrame:
     df = filter_regular_session(df)
     last_day = df["dt_et"].dt.date.max()
     return df[df["dt_et"].dt.date == last_day].reset_index(drop=True)
+    
+def fetch_bars_for_date(ticker: str, session_date: str) -> pd.DataFrame:
+    """Barras de 15 min (sesión regular) de una FECHA específica (YYYY-MM-DD)."""
+    if not POLYGON_API_KEY:
+        raise RuntimeError("Falta POLYGON_API_KEY")
+    url = (f"https://api.polygon.io/v2/aggs/ticker/{ticker.upper()}/range/15/minute/"
+           f"{session_date}/{session_date}"
+           f"?adjusted=true&sort=asc&limit=50000&apiKey={POLYGON_API_KEY}")
+    res = get_json(url, ttl=TTL_INTRADAY).get("results", [])
+    if not res:
+        return pd.DataFrame()
+    df = pd.DataFrame(res).rename(columns={"o": "open", "h": "high", "l": "low",
+                                           "c": "close", "v": "volume", "t": "timestamp"})
+    df["dt_et"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True).dt.tz_convert("America/New_York")
+    return filter_regular_session(df).reset_index(drop=True)
 
 
 def _predict_session_from_bars(model, meta: dict, today: pd.DataFrame) -> dict:
