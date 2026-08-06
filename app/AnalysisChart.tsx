@@ -5,17 +5,7 @@
  * =======================================================================
  * Motor único para líneas Y velas, con zoom dinámico + herramientas de dibujo,
  * compatible con ratón (laptop) y táctil (móvil: pinch-zoom + pan/dibujo).
- *
- *   ZOOM / PAN
- *     • Rueda del ratón → zoom hacia el cursor (Shift = solo X, Alt = solo Y)
- *     • Pinch (2 dedos) → zoom en móvil  ·  1 dedo → pan/dibujo
- *     • ✋ pan · ▣ zoom-caja · doble clic o ⟲ → reset
- *
- *   DIBUJO (persiste por 'storageKey' en localStorage)
- *     • 📈 tendencia · ➖ horizontal · ↕ vertical · 🌀 Fibonacci · ▭ rectángulo
- *     • 🧽 borrar (clic sobre el dibujo) · ↶ deshacer · 🗑️ limpiar
- *
- *   NUEVO: velas OHLC (candleKey) + overlays (marcadores Elliott) + tooltip OHLC.
+ * NUEVO: prop `priceLine` → línea horizontal MÓVIL que marca el precio real vivo.
  */
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
@@ -25,6 +15,7 @@ type BandCfg = { lowerKey: string; spanKey: string; color: string; label?: strin
 type Marker = { date: string; label?: string; color?: string };
 type CandleKey = { o: string; h: string; l: string; c: string; v?: string };
 type Overlay = { date: string; price: number; label?: string; color: string; filled?: boolean; dy?: number };
+type PriceLine = { price: number; color?: string; label?: string };
 type Row = Record<string, any> & { date: string };
 
 type Tool = "cursor" | "pan" | "zoombox" | "trend" | "hline" | "vline" | "fib" | "rect" | "erase";
@@ -38,11 +29,11 @@ const load = (k: string): Drawing[] => { try { return JSON.parse(localStorage.ge
 const save = (k: string, v: Drawing[]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* quota */ } };
 
 export default function AnalysisChart({
-  data, lines, band, markers = [], candleKey, overlays = [],
+  data, lines, band, markers = [], candleKey, overlays = [], priceLine,
   height = 460, storageKey,
 }: {
   data: Row[]; lines: LineCfg[]; band?: BandCfg; markers?: Marker[];
-  candleKey?: CandleKey; overlays?: Overlay[];
+  candleKey?: CandleKey; overlays?: Overlay[]; priceLine?: PriceLine;
   height?: number; storageKey: string;
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -86,17 +77,18 @@ export default function AnalysisChart({
     });
     if (band) data.forEach((r) => { if (r[band.lowerKey] != null) { vals.push(r[band.lowerKey]); if (r[band.spanKey] != null) vals.push(r[band.lowerKey] + r[band.spanKey]); } });
     overlays.forEach((o) => vals.push(o.price));
+    if (priceLine?.price != null) vals.push(priceLine.price);
     const lo = vals.length ? Math.min(...vals) : 0, hi = vals.length ? Math.max(...vals) : 1;
     const pad = (hi - lo) * 0.05 || 1;
     return { i0: 0, i1: Math.max(1, N - 1), y0: lo - pad, y1: hi + pad };
-  }, [data, allKeys, band, candleKey, overlays, N]);
+  }, [data, allKeys, band, candleKey, overlays, priceLine, N]);
 
   const v = view ?? autoView;
   const xToPx = useCallback((i: number) => padL + (i - v.i0) / (v.i1 - v.i0 || 1) * plotW, [v, plotW, padL]);
   const yToPx = useCallback((val: number) => padT + (v.y1 - val) / (v.y1 - v.y0 || 1) * plotH, [v, plotH, padT]);
   const pxToI = (px: number) => v.i0 + (px - padL) / (plotW || 1) * (v.i1 - v.i0);
   const pxToV = (py: number) => v.y1 - (py - padT) / (plotH || 1) * (v.y1 - v.y0);
-  const colW = plotW / (v.i1 - v.i0 || 1);   // ancho de columna en px (para velas)
+  const colW = plotW / (v.i1 - v.i0 || 1);
 
   const svgXY = (e: any) => {
     const rect = (svgRef.current as SVGSVGElement).getBoundingClientRect();
@@ -257,7 +249,6 @@ export default function AnalysisChart({
     { id: "erase", icon: "🧽", title: "Borrar (clic sobre un dibujo)" },
   ];
   const cursorStyle = tool === "pan" ? (pan.current ? "grabbing" : "grab") : "crosshair";
-
   const fmtTime = (d: string) => d.includes("T") ? new Date(d).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : d;
 
   return (
@@ -315,7 +306,7 @@ export default function AnalysisChart({
 
           {band && bandPath() && <path d={bandPath()} fill={band.color} fillOpacity={0.10} stroke="none" />}
 
-          {/* Marcadores verticales (ej. "ahora", "congelado") */}
+          {/* Marcadores verticales */}
           {markers.map((mk, k) => {
             const i = dateIndex[mk.date]; if (i == null) return null;
             return (<g key={k}>
@@ -362,6 +353,20 @@ export default function AnalysisChart({
             <rect x={Math.min(box.x0, box.x1)} y={Math.min(box.y0, box.y1)} width={Math.abs(box.x1 - box.x0)} height={Math.abs(box.y1 - box.y0)}
                   fill="#2980b9" fillOpacity={0.08} stroke="#2980b9" strokeDasharray="4 3" />
           )}
+
+          {/* ── SEÑAL DE PRECIO EN VIVO (línea horizontal móvil) ── */}
+          {priceLine?.price != null && (() => {
+            const y = yToPx(priceLine.price);
+            const col = priceLine.color || "#0a84ff";
+            return (
+              <g pointerEvents="none">
+                <line x1={padL} x2={cw - padR} y1={y} y2={y} stroke={col} strokeWidth={1.3} strokeDasharray="6 3" opacity={0.9} />
+                <rect x={cw - padR - 66} y={y - 9} width={64} height={18} rx={3} fill={col} />
+                <text x={cw - padR - 34} y={y + 4} fontSize={11} fill="#fff" fontWeight={700} textAnchor="middle">{priceLine.price.toFixed(2)}</text>
+                {priceLine.label && <text x={padL + 4} y={y - 4} fontSize={10} fill={col} fontWeight={700}>{priceLine.label}</text>}
+              </g>
+            );
+          })()}
 
           {/* Crosshair + tooltip */}
           {cross && tool !== "zoombox" && (

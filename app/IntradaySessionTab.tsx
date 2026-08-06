@@ -1,15 +1,17 @@
 "use client";
 
 /**
- * IntradaySessionTab.tsx — 🕐 Sesión intradía (con AnalysisChart potente)
- * ======================================================================
- * Misma lógica (sesiones, quote, snapshots, scorecard, guardado, velas de
- * sesiones pasadas) pero la GRÁFICA usa <AnalysisChart>: velas OHLC + zoom
- * dinámico (rueda/pinch) + herramientas de dibujo (tendencia, Fibonacci, etc.)
- * + Elliott como overlays. Táctil en móvil.
+ * IntradaySessionTab.tsx — 🕐 Sesión intradía (AnalysisChart + precio EN VIVO)
+ * ==========================================================================
+ * Igual que antes (sesiones, quote, snapshots, scorecard, guardado, velas de
+ * sesiones pasadas, Elliott, herramientas de dibujo) + NUEVO:
+ *   • Polling cada 60s a /intraday-live (solo en vista "En vivo").
+ *   • El NÚMERO del precio se actualiza cada minuto (🔴 con hora).
+ *   • Una SEÑAL horizontal móvil en la gráfica marca dónde está el precio ahora.
+ *   (No se dibuja línea atrasada; solo la señal + el número.)
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AnalysisChart from "./AnalysisChart";
 
 const API_URL = process.env.NEXT_PUBLIC_ML_API_URL || "http://localhost:8000";
@@ -37,6 +39,10 @@ export default function IntradaySessionTab() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+
+  // NUEVO: precio en vivo (minuto a minuto)
+  const [live, setLive] = useState<{ price: number | null; time: string | null } | null>(null);
+  const pollRef = useRef<any>(null);
 
   const isLive = selSession === LIVE;
 
@@ -74,6 +80,22 @@ export default function IntradaySessionTab() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selSession, ticker]);
+
+  // NUEVO: polling de precio en vivo (solo en la vista "En vivo")
+  useEffect(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    if (!isLive || !ticker) { setLive(null); return; }
+    const tick = async () => {
+      try {
+        const r = await fetch(`${API_URL}/intraday-live?ticker=${ticker}`);
+        if (r.ok) { const j = await r.json(); setLive({ price: j.price, time: j.time }); }
+      } catch { /* silencioso */ }
+    };
+    tick();                                       // inmediato
+    pollRef.current = setInterval(tick, 60000);   // cada 60 s
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLive, ticker]);
 
   async function cargarSesionesLista(tk: string) {
     try { const r = await fetch(`${API_URL}/intraday-sessions?ticker=${tk}`); setSessions(r.ok ? (await r.json()).sessions || [] : []); }
@@ -140,7 +162,6 @@ export default function IntradaySessionTab() {
   const realBars: any[] = isLive ? (data?.real || []) : pastBars;
 
   const chart = useMemo(() => {
-    // Eje temporal
     let times: string[];
     if (isLive && data?.full) times = data.full.map((p: any) => p.time);
     else {
@@ -154,14 +175,12 @@ export default function IntradaySessionTab() {
     const nReal = isLive ? (data?.bars_real ?? realBars.length) : realBars.length;
     const realByTime: Record<string, any> = {}; realBars.forEach((b) => (realByTime[b.time] = b));
 
-    // Filas base (una por tiempo) con OHLC de velas reales
     const rows: Record<string, any> = {};
     times.forEach((t) => {
       const b = realByTime[t];
       rows[t] = { date: t, ...(b ? { o: b.open, h: b.high, l: b.low, c: b.close, v: b.volume } : {}) };
     });
 
-    // Líneas: cada snapshot guardado (anchor + points) + predicción en vivo
     const lines: any[] = [];
     snaps.forEach((s) => {
       const key = `s_${s.id}`;
@@ -170,14 +189,12 @@ export default function IntradaySessionTab() {
       if (s.points?.length) lines.push({ key, color: s.color, label: `Snap ${hm(s.calc_time)}`, width: 1.6, dash: "3 3" });
     });
     if (isLive && data?.full && nReal > 0) {
-      // continuidad desde la última vela real
       const anchorT = times[nReal - 1];
       if (rows[anchorT]) rows[anchorT]["pred"] = data.full[nReal - 1].close;
       data.full.slice(nReal).forEach((p: any) => { if (rows[p.time]) rows[p.time]["pred"] = p.close; });
       if (data.bars_predicted > 0) lines.push({ key: "pred", color: "#111", label: "Predicción", width: 2, dash: "5 4" });
     }
 
-    // Overlays de Elliott
     const overlays: any[] = [];
     if (showElliott && data) {
       const eR = data.elliott_real?.elliott, eF = data.elliott_full?.elliott, abc = data.elliott_full?.abc;
@@ -189,7 +206,6 @@ export default function IntradaySessionTab() {
         overlays.push({ date: w.time, price: w.price, label: w.label, color: "#8e44ad", filled: true }));
     }
 
-    // Marcador "ahora"
     const markers: any[] = [];
     if (isLive && nReal > 0 && times[nReal - 1]) markers.push({ date: times[nReal - 1], label: "ahora", color: "#999" });
 
@@ -201,6 +217,7 @@ export default function IntradaySessionTab() {
   const up = (chg ?? 0) >= 0;
   const sessionClosed = isLive && data && (!data.predicted || data.predicted.length === 0);
   const hayGrafica = !!chart;
+  const shownPrice = live?.price ?? quote?.price;   // número visible: live si existe, si no el quote
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", fontFamily: "system-ui" }}>
@@ -250,15 +267,21 @@ export default function IntradaySessionTab() {
         </label>
       </div>
 
-      {isLive && quote && quote.price != null && (
+      {/* Precio EN VIVO (número que cambia minuto a minuto) */}
+      {isLive && shownPrice != null && (
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 15, fontWeight: 700 }}>{quote.ticker}</span>
-          <span style={{ fontSize: 26, fontWeight: 700 }}>${Number(quote.price).toFixed(2)}</span>
+          <span style={{ fontSize: 15, fontWeight: 700 }}>{ticker}</span>
+          <span style={{ fontSize: 26, fontWeight: 700 }}>${Number(shownPrice).toFixed(2)}</span>
+          {live?.time && (
+            <span style={{ fontSize: 11, color: "#0a84ff", fontWeight: 700 }}>
+              🔴 {new Date(live.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          )}
           <span style={{ fontSize: 15, fontWeight: 700, color: up ? "#1e824c" : "#c0392b" }}>
             {up ? "▲" : "▼"} {chg != null ? `${up ? "+" : ""}${Number(chg).toFixed(2)}` : "—"}
             {chgPct != null ? ` (${up ? "+" : ""}${Number(chgPct).toFixed(2)}%)` : ""}
           </span>
-          <span style={{ fontSize: 10, color: "#bbb" }}>⏱ ~15 min de retraso (Polygon)</span>
+          <span style={{ fontSize: 10, color: "#bbb" }}>⏱ ~15 min de retraso (Polygon Starter)</span>
         </div>
       )}
 
@@ -298,6 +321,7 @@ export default function IntradaySessionTab() {
             data={chart.data} lines={chart.lines}
             candleKey={{ o: "o", h: "h", l: "l", c: "c", v: "v" }}
             overlays={chart.overlays} markers={chart.markers}
+            priceLine={isLive && live?.price != null ? { price: live.price, color: "#0a84ff", label: "● real ahora" } : undefined}
             storageKey={`intr_draw_${ticker}`} height={470} />
 
           <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 12, color: "#555", flexWrap: "wrap" }}>
@@ -305,7 +329,7 @@ export default function IntradaySessionTab() {
             <span style={{ color: "#c0392b" }}>▮ vela bajista</span>
             <span style={{ color: "#111" }}>┈ predicción</span>
             <span style={{ color: "#8e44ad" }}>● Elliott (real)</span>
-            <span style={{ color: "#e67e22" }}>◯ Elliott (proyectada)</span>
+            <span style={{ color: "#0a84ff" }}>┅ precio real ahora</span>
           </div>
         </>
       )}
