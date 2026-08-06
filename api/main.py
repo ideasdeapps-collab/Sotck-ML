@@ -11,9 +11,12 @@ Endpoints:
     GET  /validate                                 ← predicho vs real (XGBoost y MLP)
     GET  /psychology                               ← Índice de Psicología de Mercado (IPM)
     GET  /price-cache                              ← precio real desde Supabase (sin Polygon)
+    GET  /quote                                    ← precio EN VIVO tipo Yahoo (Polygon snapshot)
+    GET  /intraday-snapshots · /intraday-scorecard ← desempeño intradía vs real + baseline
     GET  /forecast-history
     POST /predict · /simulate · /forecast · /backfill-actuals
     POST /save-snapshot                            ← congela TODAS las curvas (Supabase)
+    POST /intraday-snapshot                        ← guarda una predicción intradía (Supabase)
 
 Deploy: uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
 """
@@ -28,6 +31,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import joblib
+import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -45,12 +49,13 @@ from technical import technical_analysis        # noqa: E402
 from mlp import predict_curve_mlp               # noqa: E402  ← curva red neuronal
 from validate import validate_models           # noqa: E402  ← predicho vs real
 from psychology import psychology_analysis      # noqa: E402  ← Índice de Psicología (IPM)
-from intraday_ml import predict_session         # noqa: E402  ← sesión intradía 15 min
+from intraday_ml import predict_session, fetch_today_bars  # noqa: E402  ← sesión intradía 15 min
 import supabase_client as sb                     # noqa: E402
 import price_store                               # noqa: E402  ← caché de precios (Supabase)
+import intraday_store                            # noqa: E402  ← snapshots intradía (Supabase)
 
 ARTIFACT_DIR = Path(__file__).resolve().parent / "artifacts"
-app = FastAPI(title="Stock ML API", version="2.5.0")
+app = FastAPI(title="Stock ML API", version="2.6.0")
 
 ALLOWED = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(CORSMiddleware, allow_origins=ALLOWED, allow_credentials=True,
@@ -82,6 +87,16 @@ class ForecastRequest(SimulateRequest):
 class SnapshotRequest(BaseModel):
     ticker: str = Field(..., examples=["NVDA"])
     horizon: int = Field(30, ge=1, le=252)
+
+
+class IntradaySnapshotRequest(BaseModel):
+    ticker: str = Field(..., examples=["NVDA"])
+    session_date: str
+    bars_real: int
+    anchor_time: str | None = None
+    anchor_close: float
+    points: list = Field(default_factory=list)
+    dir_acc_model: float | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -157,6 +172,35 @@ def price_cache(ticker: str, days: int = 220):
             {"date": pd.to_datetime(d).date().isoformat(), "close": round(float(c), 4)}
             for d, c in zip(recent["date"], recent["close"])
         ],
+    }
+
+
+@app.get("/quote")
+def quote(ticker: str):
+    """Precio EN VIVO tipo Yahoo: último precio, cambio del día ($ y %), OHLC del día.
+    Usa el snapshot de Polygon (plan Starter, ~15 min de retraso)."""
+    key = os.getenv("POLYGON_API_KEY")
+    if not key:
+        raise HTTPException(400, "Falta POLYGON_API_KEY")
+    url = (f"https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/"
+           f"tickers/{ticker.upper()}?apiKey={key}")
+    try:
+        r = requests.get(url, timeout=15); r.raise_for_status()
+        t = r.json().get("ticker", {})
+    except Exception as e:
+        raise HTTPException(400, str(e))
+    day = t.get("day", {}) or {}
+    prev = t.get("prevDay", {}) or {}
+    last = (t.get("lastTrade", {}) or {}).get("p") or day.get("c") or prev.get("c")
+    return {
+        "ticker": ticker.upper(),
+        "price": last,
+        "change": t.get("todaysChange"),
+        "change_pct": t.get("todaysChangePerc"),
+        "day_open": day.get("o"), "day_high": day.get("h"),
+        "day_low": day.get("l"), "day_volume": day.get("v"),
+        "prev_close": prev.get("c"),
+        "updated": t.get("updated"),
     }
 
 
@@ -309,6 +353,48 @@ def psychology(ticker: str, horizon: int = 21, sentiment: float = 0.0):
         raise HTTPException(404, str(e))
     except Exception as e:
         raise HTTPException(400, str(e))
+
+
+# --------------------------------------------------------------------------- #
+# Intradía: snapshots + scorecard de cierre (Fase A)
+# --------------------------------------------------------------------------- #
+@app.post("/intraday-snapshot")
+def save_intraday_snapshot(req: IntradaySnapshotRequest):
+    """Guarda una predicción intradía (curva del resto de la sesión) en Supabase."""
+    if not intraday_store.enabled():
+        raise HTTPException(503, "Supabase no está configurado.")
+    rid = intraday_store.save_snapshot(
+        req.ticker, req.session_date, req.bars_real,
+        req.anchor_time, req.anchor_close, req.points, req.dir_acc_model)
+    return {"saved": True, "id": rid}
+
+
+@app.get("/intraday-snapshots")
+def list_intraday_snapshots(ticker: str, session_date: str = ""):
+    """Lee los snapshots intradía de un ticker (opcional: una sesión concreta)."""
+    if not intraday_store.enabled():
+        raise HTTPException(503, "Supabase no está configurado.")
+    return {"ticker": ticker.upper(),
+            "snapshots": intraday_store.get_snapshots(ticker, session_date or None)}
+
+
+@app.get("/intraday-scorecard")
+def intraday_scorecard(ticker: str, session_date: str = ""):
+    """Scorecard de cierre: mide cada snapshot vs. real + baseline 'sin cambio'."""
+    if not intraday_store.enabled():
+        raise HTTPException(503, "Supabase no está configurado.")
+    snaps = intraday_store.get_snapshots(ticker, session_date or None)
+    if not snaps:
+        return {"ticker": ticker.upper(), "rows": [], "verdict": None}
+    try:
+        today = fetch_today_bars(ticker)
+        real_bars = [{"time": pd.Timestamp(r["dt_et"]).isoformat(),
+                      "close": round(float(r["close"]), 4)}
+                     for _, r in today.iterrows()]
+    except Exception:
+        real_bars = []
+    score = intraday_store.score_snapshots(snaps, real_bars)
+    return {"ticker": ticker.upper(), "real_bars": len(real_bars), **score}
 
 
 @app.post("/predict")
