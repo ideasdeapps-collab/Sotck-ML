@@ -1,16 +1,16 @@
 "use client";
 
 /**
- * IntradaySessionTab.tsx — 🕐 Sesión intradía (Fase B + dropdown de sesiones)
- * ==========================================================================
- * • Dropdown "Sesión": 🔴 En vivo (hoy) + sesiones PASADAS guardadas (como en
- *   Validación de Modelos). Al elegir una pasada → carga sus snapshots + scorecard
- *   desde Supabase, SIN recalcular.
- * • En vivo: velas reales + precio en vivo (/quote) + «↻ Calcular» + «💾 Guardar».
- * • Cada snapshot guardado se superpone con su color. 📊 Desempeño = scorecard.
+ * IntradaySessionTab.tsx — 🕐 Sesión intradía (dropdown + velas en sesiones pasadas)
+ * ================================================================================
+ * FIXES:
+ *   • Al abrir una SESIÓN PASADA → carga las VELAS REALES de ese día (/intraday-bars)
+ *     y superpone las predicciones guardadas (predicho vs. lo que realmente pasó).
+ *   • Evita GUARDAR snapshots vacíos: si la sesión ya cerró (0 barras a predecir),
+ *     el botón 💾 avisa en vez de guardar points:[] inservible.
  *
- * Endpoints: /predict-intraday · /quote · /intraday-snapshot ·
- *            /intraday-snapshots · /intraday-sessions · /intraday-scorecard
+ * Endpoints: /predict-intraday · /quote · /intraday-snapshot · /intraday-snapshots
+ *            · /intraday-sessions · /intraday-scorecard · /intraday-bars
  */
 
 import { useEffect, useState } from "react";
@@ -27,9 +27,10 @@ const fechaCorta = (d: string) => new Date(d + "T12:00:00").toLocaleDateString([
 export default function IntradaySessionTab() {
   const [models, setModels] = useState<string[]>([]);
   const [ticker, setTicker] = useState<string>("");
-  const [sessions, setSessions] = useState<any[]>([]);      // sesiones guardadas (fechas)
-  const [selSession, setSelSession] = useState<string>(LIVE); // LIVE o "YYYY-MM-DD"
-  const [data, setData] = useState<any>(null);              // /predict-intraday (solo en vivo)
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [selSession, setSelSession] = useState<string>(LIVE);
+  const [data, setData] = useState<any>(null);            // /predict-intraday (en vivo)
+  const [pastBars, setPastBars] = useState<any[]>([]);     // velas reales de sesión pasada
   const [quote, setQuote] = useState<any>(null);
   const [snaps, setSnaps] = useState<any[]>([]);
   const [score, setScore] = useState<any>(null);
@@ -59,7 +60,6 @@ export default function IntradaySessionTab() {
     })();
   }, []);
 
-  // Al cambiar TICKER → sesiones guardadas + volver a "En vivo"
   useEffect(() => {
     if (!ticker) return;
     setError(null); setMsg(null); setHover(null); setScore(null); setShowScore(false);
@@ -68,17 +68,18 @@ export default function IntradaySessionTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticker]);
 
-  // Al cambiar la SESIÓN seleccionada → cargar en vivo o la pasada
   useEffect(() => {
     if (!ticker) return;
     setMsg(null); setHover(null); setScore(null); setShowScore(false);
     if (isLive) {
+      setPastBars([]);
       cargarSesion(ticker);
       cargarQuote(ticker);
-      cargarSnaps(ticker, null);       // snapshots de hoy (la sesión más reciente)
+      cargarSnaps(ticker, null);
     } else {
       setData(null); setQuote(null);
-      cargarSnaps(ticker, selSession); // snapshots de la sesión pasada elegida
+      cargarSnaps(ticker, selSession);
+      cargarVelasPasadas(ticker, selSession);   // ← velas reales del día pasado
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selSession, ticker]);
@@ -100,6 +101,15 @@ export default function IntradaySessionTab() {
     finally { setLoading(false); }
   }
 
+  async function cargarVelasPasadas(tk: string, sessionDate: string) {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API_URL}/intraday-bars?ticker=${tk}&session_date=${sessionDate}`);
+      setPastBars(r.ok ? (await r.json()).bars || [] : []);
+    } catch { setPastBars([]); }
+    finally { setLoading(false); }
+  }
+
   async function cargarQuote(tk: string) {
     try { const r = await fetch(`${API_URL}/quote?ticker=${tk}`); setQuote(r.ok ? await r.json() : null); }
     catch { setQuote(null); }
@@ -111,7 +121,6 @@ export default function IntradaySessionTab() {
       const r = await fetch(`${API_URL}/intraday-snapshots?ticker=${tk}${q}`);
       if (!r.ok) { setSnaps([]); return; }
       const j = await r.json();
-      // Si estamos en vivo, filtra a la sesión más reciente para no mezclar días
       let list = j.snapshots || [];
       if (!sessionDate && list.length) {
         const latest = list.reduce((mx: string, s: any) => (s.session_date > mx ? s.session_date : mx), list[0].session_date);
@@ -123,22 +132,27 @@ export default function IntradaySessionTab() {
 
   async function guardar() {
     if (!data) return;
+    // Fix: no guardar snapshots vacíos (sesión ya cerrada → nada que predecir)
+    if (!data.predicted || data.predicted.length === 0) {
+      setError("La sesión ya cerró (0 barras a predecir). Guarda durante una sesión ABIERTA, cuando aún queda día por proyectar.");
+      return;
+    }
     setSaving(true); setMsg(null); setError(null);
     try {
       const lastReal = data.real?.[data.real.length - 1];
       const payload = {
         ticker, session_date: data.session_date, bars_real: data.bars_real,
         anchor_time: lastReal?.time || null, anchor_close: data.last_real_close,
-        points: (data.predicted || []).map((p: any) => ({ time: p.time, close: p.close })),
+        points: data.predicted.map((p: any) => ({ time: p.time, close: p.close })),
         dir_acc_model: data.model_meta?.directional_accuracy ?? null,
       };
       const res = await fetch(`${API_URL}/intraday-snapshot`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error((await res.json()).detail || "Error al guardar");
-      setMsg("✅ Predicción guardada en Supabase.");
+      setMsg(`✅ Predicción guardada (${payload.points.length} barras proyectadas).`);
       await cargarSnaps(ticker, null);
-      await cargarSesionesLista(ticker);   // por si es la primera de la sesión
+      await cargarSesionesLista(ticker);
     } catch (e: any) { setError(e.message); }
     finally { setSaving(false); }
   }
@@ -157,44 +171,44 @@ export default function IntradaySessionTab() {
   const W = 960, H = 480, padL = 52, padR = 62, padT = 22, padB = 48;
   const plotW = W - padL - padR, plotH = H - padT - padB;
 
-  // Construye el eje temporal: en vivo usa data.full; en sesión pasada, la unión
-  // de tiempos de todos los snapshots (ancla + puntos).
-  function buildAxis(): { times: string[]; realBars: any[]; nReal: number } {
-    if (isLive && data?.full) {
-      return { times: data.full.map((p: any) => p.time), realBars: data.real || [], nReal: data.bars_real };
-    }
+  // Velas reales activas: en vivo (data.real) o de la sesión pasada (pastBars)
+  const realBars: any[] = isLive ? (data?.real || []) : pastBars;
+
+  // Eje temporal: en vivo usa data.full; en pasada usa la unión de velas + snapshots
+  function buildTimes(): string[] {
+    if (isLive && data?.full) return data.full.map((p: any) => p.time);
     const set = new Set<string>();
+    realBars.forEach((b) => set.add(b.time));
     snaps.forEach((s) => { if (s.anchor_time) set.add(s.anchor_time); (s.points || []).forEach((p: any) => set.add(p.time)); });
-    return { times: Array.from(set).sort(), realBars: [], nReal: 0 };
+    return Array.from(set).sort();
   }
 
   function render() {
-    const axis = buildAxis();
-    const times = axis.times;
+    const times = buildTimes();
     if (times.length < 2) return null;
-    const nReal = axis.nReal;
-    const realBars = axis.realBars;
+    const nReal = isLive ? (data?.bars_real ?? realBars.length) : realBars.length;
 
     const idxByTime: Record<string, number> = {};
     times.forEach((t, i) => (idxByTime[t] = i));
 
     const vals: number[] = [];
     realBars.forEach((b) => { vals.push(b.high, b.low); });
-    snaps.forEach((s) => { vals.push(s.anchor_close); (s.points || []).forEach((p: any) => vals.push(p.close)); });
+    snaps.forEach((s) => { if (s.anchor_close) vals.push(s.anchor_close); (s.points || []).forEach((p: any) => vals.push(p.close)); });
     if (isLive && data?.full) data.full.slice(nReal).forEach((p: any) => vals.push(p.close));
+    const eReal = data?.elliott_real || {}, eFull = data?.elliott_full || {};
+    [...(eReal.elliott?.points || []), ...(eFull.elliott?.points || []),
+     ...(eFull.abc?.points || [])].forEach((w: any) => vals.push(w.price));
     if (!vals.length) return null;
     const yMax = Math.max(...vals) * 1.001, yMin = Math.min(...vals) * 0.999;
     const y = (p: number) => padT + (yMax - p) / (yMax - yMin) * plotH;
 
     const n = times.length, cw = plotW / n, cx = (i: number) => padL + i * cw + cw / 2;
-    const boundaryX = nReal > 0 ? padL + nReal * cw : null;
+    const boundaryX = (isLive && nReal > 0) ? padL + nReal * cw : null;
 
     const xticks = Array.from({ length: 7 }).map((_, k) => {
       const i = Math.round((n - 1) * (k / 6)); return { i, time: times[i] };
     });
 
-    // Elliott (solo en vivo, viene en data)
-    const eReal = data?.elliott_real || {}, eFull = data?.elliott_full || {};
     const zzFull = (eFull.zigzag || []) as any[];
     const wavesReal = eReal.elliott?.found ? eReal.elliott.points.filter((w: any) => w.label !== "0") : [];
     const wavesFull = eFull.elliott?.found ? eFull.elliott.points.filter((w: any) => w.label !== "0") : [];
@@ -231,29 +245,28 @@ export default function IntradaySessionTab() {
                 fill="none" stroke="#8e44ad" strokeWidth={1} opacity={0.28} />
         )}
 
-        {/* Velas reales (solo en vivo) */}
+        {/* VELAS reales (en vivo o sesión pasada) */}
         {realBars.map((b, i) => {
+          const idx = idxByTime[b.time]; if (idx == null) return null;
           const up = b.close >= b.open; const col = up ? "#1e824c" : "#c0392b";
           const bt = y(Math.max(b.open, b.close)), bb = y(Math.min(b.open, b.close));
           return (<g key={`c${i}`}>
-            <line x1={cx(i)} x2={cx(i)} y1={y(b.high)} y2={y(b.low)} stroke={col} strokeWidth={1} />
-            <rect x={cx(i) - cw * 0.32} y={bt} width={cw * 0.64} height={Math.max(bb - bt, 1.2)} fill={col} />
+            <line x1={cx(idx)} x2={cx(idx)} y1={y(b.high)} y2={y(b.low)} stroke={col} strokeWidth={1} />
+            <rect x={cx(idx) - cw * 0.32} y={bt} width={cw * 0.64} height={Math.max(bb - bt, 1.2)} fill={col} />
           </g>);
         })}
 
-        {/* Snapshots guardados (cada uno su color) */}
+        {/* Snapshots guardados */}
         {snaps.map((s) => {
           const pts = [{ time: s.anchor_time, close: s.anchor_close }, ...(s.points || [])]
             .filter((p: any) => p.time && idxByTime[p.time] != null);
           if (pts.length < 2) return null;
           const d = pts.map((p: any, k: number) => `${k === 0 ? "M" : "L"} ${cx(idxByTime[p.time])} ${y(p.close)}`).join(" ");
-          return <path key={s.id} d={d} fill="none" stroke={s.color} strokeWidth={1.6} strokeDasharray="3 3" opacity={0.8} />;
+          return <path key={s.id} d={d} fill="none" stroke={s.color} strokeWidth={1.6} strokeDasharray="3 3" opacity={0.85} />;
         })}
 
-        {/* Predicción en vivo (negra) */}
         {predLine && <path d={predLine} fill="none" stroke="#111" strokeWidth={2} strokeDasharray="5 4" opacity={0.85} />}
 
-        {/* Elliott */}
         {showElliott && wavesFull.map((w: any, k: number) => {
           const i = idxByTime[w.time]; if (i == null) return null;
           return (<g key={`ef${k}`}>
@@ -278,11 +291,13 @@ export default function IntradaySessionTab() {
           <rect key={`h${i}`} x={padL + i * cw} y={padT} width={cw} height={plotH} fill="transparent" onMouseEnter={() => setHover(i)} />
         ))}
         {hover != null && (() => {
-          const i = hover; const isRealBar = i < nReal; const b = isRealBar ? realBars[i] : null;
-          const yv = isRealBar ? b.close : null; const gx = cx(i);
-          const lines = isRealBar
-            ? [hm(times[i]), `O ${b.open}  H ${b.high}`, `L ${b.low}  C ${b.close}`, `Vol ${b.volume.toLocaleString()}`]
-            : [hm(times[i])];
+          const tHover = times[hover];
+          const b = realBars.find((rb) => rb.time === tHover);
+          const gx = cx(hover);
+          const yv = b ? b.close : null;
+          const lines = b
+            ? [hm(tHover), `O ${b.open}  H ${b.high}`, `L ${b.low}  C ${b.close}`, `Vol ${b.volume.toLocaleString()}`]
+            : [hm(tHover)];
           const boxW = 138, boxH = 14 + lines.length * 13;
           let bx = gx + 10; if (bx + boxW > W - padR) bx = gx - boxW - 10;
           const by = Math.max(padT, (yv != null ? y(yv) : padT + 20) - boxH - 8);
@@ -304,7 +319,8 @@ export default function IntradaySessionTab() {
   const ell = data?.elliott_full?.elliott;
   const chg = quote?.change ?? null, chgPct = quote?.change_pct ?? null;
   const up = (chg ?? 0) >= 0;
-  const hayGrafica = (isLive && data) || (!isLive && snaps.length > 0);
+  const sessionClosed = isLive && data && (!data.predicted || data.predicted.length === 0);
+  const hayGrafica = (isLive && data) || (!isLive && (pastBars.length > 0 || snaps.length > 0));
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", fontFamily: "system-ui" }}>
@@ -318,8 +334,6 @@ export default function IntradaySessionTab() {
             {models.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
         </label>
-
-        {/* Dropdown de SESIONES guardadas */}
         <label>
           <div style={{ fontSize: 12, color: "#666" }}>Sesión</div>
           <select value={selSession} onChange={(e) => setSelSession(e.target.value)}
@@ -339,8 +353,10 @@ export default function IntradaySessionTab() {
               style={{ padding: "10px 18px", background: "#111", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>
               {loading ? "Calculando…" : "↻ Calcular"}
             </button>
-            <button onClick={guardar} disabled={saving || !data}
-              style={{ padding: "10px 16px", background: "#8e44ad", color: "#fff", border: "none", borderRadius: 6, cursor: data ? "pointer" : "not-allowed" }}>
+            <button onClick={guardar} disabled={saving || !data || sessionClosed}
+              title={sessionClosed ? "La sesión ya cerró: no hay barras a predecir" : "Guarda la predicción actual"}
+              style={{ padding: "10px 16px", background: sessionClosed ? "#ccc" : "#8e44ad", color: "#fff",
+                       border: "none", borderRadius: 6, cursor: (data && !sessionClosed) ? "pointer" : "not-allowed" }}>
               {saving ? "Guardando…" : "💾 Guardar"}
             </button>
           </>
@@ -355,7 +371,6 @@ export default function IntradaySessionTab() {
         </label>
       </div>
 
-      {/* Precio en vivo (solo en la vista En vivo) */}
       {isLive && quote && quote.price != null && (
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
           <span style={{ fontSize: 15, fontWeight: 700 }}>{quote.ticker}</span>
@@ -370,12 +385,14 @@ export default function IntradaySessionTab() {
 
       {error && <p style={{ color: "#c0392b" }}>⚠️ {error}</p>}
       {msg && <p style={{ color: "#1e824c", fontSize: 13 }}>{msg}</p>}
+      {sessionClosed && !error && (
+        <p style={{ fontSize: 12, color: "#b8860b" }}>ⓘ Sesión cerrada: se muestran las velas del día, pero no hay predicción que guardar (guarda durante la sesión abierta).</p>
+      )}
 
-      {/* Banner de modo sesión pasada */}
       {!isLive && (
         <div style={{ padding: "8px 12px", marginBottom: 10, borderRadius: 8, fontSize: 12,
           background: "#eef2f6", borderLeft: "4px solid #2980b9", color: "#2c3e50" }}>
-          📌 Viendo sesión guardada del <b>{fechaCorta(selSession)}</b> ({snaps.length} predicciones). Solo lectura — pulsa 📊 Desempeño para su scorecard.
+          📌 Sesión guardada del <b>{fechaCorta(selSession)}</b> — velas reales del día + {snaps.length} predicción(es) guardada(s). Pulsa 📊 para el scorecard.
         </div>
       )}
 
@@ -384,9 +401,8 @@ export default function IntradaySessionTab() {
                       borderRadius: 12, border: "1px dashed #d5dce3", color: "#7f8c8d" }}>
           <div style={{ fontSize: 34, marginBottom: 8 }}>🕐</div>
           <div style={{ fontSize: 15, fontWeight: 600, color: "#5a6b7b" }}>
-            {isLive ? "Elige un ticker y pulsa «↻ Calcular»" : "Esta sesión no tiene predicciones guardadas"}
+            {isLive ? "Elige un ticker y pulsa «↻ Calcular»" : "No hay datos para esta sesión"}
           </div>
-          <div style={{ fontSize: 13, marginTop: 4 }}>Guarda predicciones (💾) durante la sesión y consúltalas aquí después.</div>
         </div>
       )}
 
@@ -398,7 +414,7 @@ export default function IntradaySessionTab() {
               <span style={{ color: "#666" }}>{data.bars_real} velas · {data.bars_predicted} predichas</span>
               {ell?.found && <span style={{ color: "#8e44ad" }}>🌊 Elliott {ell.tentative ? "(tentativo)" : `(${ell.confidence}%)`}</span>}
             </>}
-            {snaps.length > 0 && <span style={{ color: "#666" }}>💾 {snaps.length} guardadas</span>}
+            {!isLive && <span style={{ color: "#666" }}>{realBars.length} velas reales · {snaps.length} guardadas</span>}
           </div>
 
           {render()}
@@ -409,11 +425,18 @@ export default function IntradaySessionTab() {
               {snaps.map((s) => (
                 <span key={s.id} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "#777" }}>
                   <span style={{ width: 14, height: 3, background: s.color, display: "inline-block", borderRadius: 2 }} />
-                  {hm(s.calc_time)}
+                  {hm(s.calc_time)}{(!s.points || s.points.length === 0) ? " (vacía)" : ""}
                 </span>
               ))}
             </div>
           )}
+
+          <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 12, color: "#555", flexWrap: "wrap" }}>
+            <span style={{ color: "#1e824c" }}>▮ vela alcista</span>
+            <span style={{ color: "#c0392b" }}>▮ vela bajista</span>
+            <span style={{ color: "#111" }}>┈ predicción</span>
+            <span style={{ color: "#8e44ad" }}>● Elliott (real)</span>
+          </div>
         </>
       )}
 
@@ -443,7 +466,6 @@ export default function IntradaySessionTab() {
                         <th style={{ textAlign: "right", padding: "8px 10px" }}>MAPE modelo</th>
                         <th style={{ textAlign: "right", padding: "8px 10px" }}>MAPE baseline</th>
                         <th style={{ textAlign: "right", padding: "8px 10px" }}>Skill</th>
-                        <th style={{ textAlign: "right", padding: "8px 10px" }}>Err. cierre</th>
                         <th style={{ textAlign: "center", padding: "8px 10px" }}>Dir.</th>
                       </tr>
                     </thead>
@@ -457,16 +479,15 @@ export default function IntradaySessionTab() {
                           <td style={{ textAlign: "right", padding: "7px 10px", fontWeight: 700, color: r.skill == null ? "#999" : r.skill > 0 ? "#1e824c" : "#c0392b" }}>
                             {r.skill == null ? "—" : `${r.skill > 0 ? "+" : ""}${(r.skill * 100).toFixed(0)}%`}
                           </td>
-                          <td style={{ textAlign: "right", padding: "7px 10px" }}>{r.close_err == null ? "—" : `${(r.close_err * 100).toFixed(2)}%`}</td>
                           <td style={{ textAlign: "center", padding: "7px 10px" }}>{r.dir_ok == null ? "—" : r.dir_ok ? "✅" : "❌"}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              ) : <p style={{ fontSize: 13, color: "#999" }}>Sin snapshots evaluables aún (el precio real todavía no alcanza las barras predichas).</p>}
+              ) : <p style={{ fontSize: 13, color: "#999" }}>Sin snapshots evaluables (los guardados tienen la curva vacía — se guardaron con la sesión cerrada).</p>}
               <p style={{ fontSize: 11, color: "#999", marginTop: 10 }}>
-                ⓘ <b>Skill</b> = cuánto le gana el modelo al baseline “sin cambio”. &gt; 0 = aporta; ≤ 0 = no aportó. Análisis educativo, no recomendación.
+                ⓘ <b>Skill</b> = cuánto le gana el modelo al baseline “sin cambio”. &gt; 0 = aporta. Análisis educativo, no recomendación.
               </p>
             </>
           )}
