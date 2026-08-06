@@ -65,6 +65,7 @@ export default function AnalysisChart({
   const [draft, setDraft] = useState<Drawing | null>(null);
   const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const pan = useRef<{ px: number; py: number; view: View } | null>(null);
+  const pinch = useRef<{ d: number; cx: number; cy: number; view: View } | null>(null);
   const [cross, setCross] = useState<{ px: number; py: number } | null>(null);
 
   const N = data.length;
@@ -170,6 +171,44 @@ export default function AnalysisChart({
   }
   function commit(d: Drawing) { setDrawings((prev) => [...prev, d]); }
   const uid = () => `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
+  // ---------- TÁCTIL (móvil): 1 dedo = pan/dibujo · 2 dedos = pinch-zoom ----------
+  const touchXY = (t: React.Touch) => ({ clientX: t.clientX, clientY: t.clientY } as any);
+  function touchStart(e: React.TouchEvent) {
+    if (e.touches.length === 2) {
+      const [t1, t2] = [e.touches[0], e.touches[1]];
+      const rect = (svgRef.current as SVGSVGElement).getBoundingClientRect();
+      pinch.current = {
+        d: Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY),
+        cx: (t1.clientX + t2.clientX) / 2 - rect.left,
+        cy: (t1.clientY + t2.clientY) / 2 - rect.top,
+        view: v,
+      };
+      pan.current = null; setDraft(null); setBox(null);
+      return;
+    }
+    if (e.touches.length === 1) down(touchXY(e.touches[0]));
+  }
+  function touchMove(e: React.TouchEvent) {
+    if (pinch.current && e.touches.length === 2) {
+      const [t1, t2] = [e.touches[0], e.touches[1]];
+      const nd = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      const f = pinch.current.d / (nd || 1);     // separar dedos (nd↑) ⇒ f<1 ⇒ acercar
+      const sv = pinch.current.view;
+      const ci = sv.i0 + (pinch.current.cx - padL) / (plotW || 1) * (sv.i1 - sv.i0);
+      const cv = sv.y1 - (pinch.current.cy - padT) / (plotH || 1) * (sv.y1 - sv.y0);
+      let i0 = ci - (ci - sv.i0) * f, i1 = ci + (sv.i1 - ci) * f;
+      let y0 = cv - (cv - sv.y0) * f, y1 = cv + (sv.y1 - cv) * f;
+      i0 = Math.max(-2, i0); i1 = Math.min(N + 1, i1);
+      if (i1 - i0 >= 2) setView({ i0, i1, y0, y1 });
+      return;
+    }
+    if (e.touches.length === 1) move(touchXY(e.touches[0]));
+  }
+  function touchEnd(e: React.TouchEvent) {
+    if (e.touches.length < 2) pinch.current = null;
+    if (e.touches.length === 0) { up(); setCross(null); }
+  }
 
   function eraseAt(px: number, py: number) {
     const near = (d: Drawing) => {
@@ -278,6 +317,7 @@ export default function AnalysisChart({
       <div ref={wrapRef} style={{ width: "100%" }}>
         <svg ref={svgRef} width={cw} height={ch} style={{ background: "#fff", border: "1px solid #eee", borderRadius: 8, cursor: cursorStyle, touchAction: "none", display: "block", maxWidth: "100%" }}
              onMouseDown={down} onMouseMove={move} onMouseUp={up} onMouseLeave={() => { setCross(null); if (!draft && !box) pan.current = null; }}
+             onTouchStart={touchStart} onTouchMove={touchMove} onTouchEnd={touchEnd}
              onDoubleClick={() => setView(null)}>
           {/* Rejilla Y */}
           {yticks.map((yv, k) => (
