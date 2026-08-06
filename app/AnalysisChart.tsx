@@ -3,29 +3,19 @@
 /**
  * AnalysisChart.tsx — Gráfica de análisis técnico interactiva (SVG propio)
  * =======================================================================
- * Reemplaza a Recharts para dar CONTROL TOTAL de interacción:
+ * Motor único para líneas Y velas, con zoom dinámico + herramientas de dibujo,
+ * compatible con ratón (laptop) y táctil (móvil: pinch-zoom + pan/dibujo).
  *
  *   ZOOM / PAN
  *     • Rueda del ratón → zoom hacia el cursor (Shift = solo X, Alt = solo Y)
- *     • Herramienta "pan" (✋) → arrastrar para desplazar
- *     • Herramienta "zoom-caja" (▣) → arrastrar un rectángulo para acercar
- *     • Doble clic o ⟲ → reset a la vista completa
+ *     • Pinch (2 dedos) → zoom en móvil  ·  1 dedo → pan/dibujo
+ *     • ✋ pan · ▣ zoom-caja · doble clic o ⟲ → reset
  *
- *   HERRAMIENTAS DE DIBUJO (para análisis propio)
- *     • Tendencia (📈) : línea entre 2 puntos
- *     • Horizontal (➖): soporte/resistencia
- *     • Vertical (↕)   : marca temporal
- *     • Fibonacci (🌀) : arrastra máx→mín → 0/23.6/38.2/50/61.8/78.6/100%
- *     • Rectángulo (▭) : zona de precio
- *     • Borrar (🧽)     : clic sobre un dibujo para eliminarlo
- *   Los dibujos se guardan por 'storageKey' (localStorage) y persisten.
+ *   DIBUJO (persiste por 'storageKey' en localStorage)
+ *     • 📈 tendencia · ➖ horizontal · ↕ vertical · 🌀 Fibonacci · ▭ rectángulo
+ *     • 🧽 borrar (clic sobre el dibujo) · ↶ deshacer · 🗑️ limpiar
  *
- *   CROSSHAIR con lectura de valores + tooltip del punto más cercano.
- *
- * Uso:
- *   <AnalysisChart data={series} lines={[{key,color,label,width?,dash?}]}
- *                  band={{lowerKey:'bandBase', spanKey:'band', color:'#3498db'}}
- *                  markers={[{date, label, color}]} storageKey={`draw_${ticker}`} />
+ *   NUEVO: velas OHLC (candleKey) + overlays (marcadores Elliott) + tooltip OHLC.
  */
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
@@ -33,6 +23,8 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 type LineCfg = { key: string; color: string; label: string; width?: number; dash?: string };
 type BandCfg = { lowerKey: string; spanKey: string; color: string; label?: string };
 type Marker = { date: string; label?: string; color?: string };
+type CandleKey = { o: string; h: string; l: string; c: string; v?: string };
+type Overlay = { date: string; price: number; label?: string; color: string; filled?: boolean; dy?: number };
 type Row = Record<string, any> & { date: string };
 
 type Tool = "cursor" | "pan" | "zoombox" | "trend" | "hline" | "vline" | "fib" | "rect" | "erase";
@@ -46,9 +38,11 @@ const load = (k: string): Drawing[] => { try { return JSON.parse(localStorage.ge
 const save = (k: string, v: Drawing[]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* quota */ } };
 
 export default function AnalysisChart({
-  data, lines, band, markers = [], height = 460, storageKey,
+  data, lines, band, markers = [], candleKey, overlays = [],
+  height = 460, storageKey,
 }: {
   data: Row[]; lines: LineCfg[]; band?: BandCfg; markers?: Marker[];
+  candleKey?: CandleKey; overlays?: Overlay[];
   height?: number; storageKey: string;
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -61,7 +55,7 @@ export default function AnalysisChart({
   const [tool, setTool] = useState<Tool>("cursor");
   const [color, setColor] = useState(DRAW_COLORS[0]);
   const [drawings, setDrawings] = useState<Drawing[]>([]);
-  const [view, setView] = useState<View | null>(null);      // null = auto
+  const [view, setView] = useState<View | null>(null);
   const [draft, setDraft] = useState<Drawing | null>(null);
   const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const pan = useRef<{ px: number; py: number; view: View } | null>(null);
@@ -70,43 +64,46 @@ export default function AnalysisChart({
 
   const N = data.length;
   const allKeys = useMemo(() => lines.map((l) => l.key), [lines]);
+  const dateIndex = useMemo(() => {
+    const m: Record<string, number> = {}; data.forEach((r, i) => (m[r.date] = i)); return m;
+  }, [data]);
 
-  // Medir ancho real del contenedor (para mapping pixel↔dato 1:1)
   useEffect(() => {
     if (!wrapRef.current) return;
-    const ro = new ResizeObserver((es) => { for (const e of es) setCw(Math.max(360, e.contentRect.width)); });
+    const ro = new ResizeObserver((es) => { for (const e of es) setCw(Math.max(340, e.contentRect.width)); });
     ro.observe(wrapRef.current);
     return () => ro.disconnect();
   }, []);
 
-  // Cargar/guardar dibujos por ticker
   useEffect(() => { setDrawings(load(storageKey)); setView(null); setDraft(null); }, [storageKey]);
   useEffect(() => { save(storageKey, drawings); }, [drawings, storageKey]);
 
-  // Vista automática (fit) a partir de los datos
   const autoView = useMemo<View>(() => {
     const vals: number[] = [];
-    data.forEach((r) => allKeys.forEach((k) => { if (r[k] != null) vals.push(r[k]); }));
+    data.forEach((r) => {
+      allKeys.forEach((k) => { if (r[k] != null) vals.push(r[k]); });
+      if (candleKey && r[candleKey.h] != null) { vals.push(r[candleKey.h], r[candleKey.l]); }
+    });
     if (band) data.forEach((r) => { if (r[band.lowerKey] != null) { vals.push(r[band.lowerKey]); if (r[band.spanKey] != null) vals.push(r[band.lowerKey] + r[band.spanKey]); } });
+    overlays.forEach((o) => vals.push(o.price));
     const lo = vals.length ? Math.min(...vals) : 0, hi = vals.length ? Math.max(...vals) : 1;
     const pad = (hi - lo) * 0.05 || 1;
     return { i0: 0, i1: Math.max(1, N - 1), y0: lo - pad, y1: hi + pad };
-  }, [data, allKeys, band, N]);
+  }, [data, allKeys, band, candleKey, overlays, N]);
 
   const v = view ?? autoView;
-
-  // Mapeos
   const xToPx = useCallback((i: number) => padL + (i - v.i0) / (v.i1 - v.i0 || 1) * plotW, [v, plotW, padL]);
   const yToPx = useCallback((val: number) => padT + (v.y1 - val) / (v.y1 - v.y0 || 1) * plotH, [v, plotH, padT]);
   const pxToI = (px: number) => v.i0 + (px - padL) / (plotW || 1) * (v.i1 - v.i0);
   const pxToV = (py: number) => v.y1 - (py - padT) / (plotH || 1) * (v.y1 - v.y0);
+  const colW = plotW / (v.i1 - v.i0 || 1);   // ancho de columna en px (para velas)
 
-  const svgXY = (e: React.MouseEvent | WheelEvent) => {
+  const svgXY = (e: any) => {
     const rect = (svgRef.current as SVGSVGElement).getBoundingClientRect();
-    return { px: (e as any).clientX - rect.left, py: (e as any).clientY - rect.top };
+    return { px: e.clientX - rect.left, py: e.clientY - rect.top };
   };
 
-  // ---------- ZOOM con rueda ----------
+  // ---------- ZOOM rueda ----------
   useEffect(() => {
     const svg = svgRef.current; if (!svg) return;
     const onWheel = (e: WheelEvent) => {
@@ -118,7 +115,6 @@ export default function AnalysisChart({
       let { i0, i1, y0, y1 } = v;
       if (!onlyY) { i0 = ci - (ci - i0) * f; i1 = ci + (i1 - ci) * f; }
       if (!onlyX) { y0 = cv - (cv - y0) * f; y1 = cv + (y1 - cv) * f; }
-      // límites suaves
       i0 = Math.max(-2, i0); i1 = Math.min(N + 1, i1);
       if (i1 - i0 < 2) return;
       setView({ i0, i1, y0, y1 });
@@ -127,8 +123,8 @@ export default function AnalysisChart({
     return () => svg.removeEventListener("wheel", onWheel);
   }, [v, N]); // eslint-disable-line
 
-  // ---------- Ratón: dibujar / pan / zoom-caja ----------
-  function down(e: React.MouseEvent) {
+  // ---------- Ratón ----------
+  function down(e: any) {
     const { px, py } = svgXY(e);
     const p = { i: pxToI(px), v: pxToV(py) };
     if (tool === "erase") { eraseAt(px, py); return; }
@@ -136,11 +132,9 @@ export default function AnalysisChart({
     if (tool === "zoombox") { setBox({ x0: px, y0: py, x1: px, y1: py }); return; }
     if (tool === "hline") { commit({ id: uid(), type: "hline", color, pts: [p] }); return; }
     if (tool === "vline") { commit({ id: uid(), type: "vline", color, pts: [p] }); return; }
-    if (tool === "trend" || tool === "fib" || tool === "rect") {
-      setDraft({ id: uid(), type: tool, color, pts: [p, p] });
-    }
+    if (tool === "trend" || tool === "fib" || tool === "rect") setDraft({ id: uid(), type: tool, color, pts: [p, p] });
   }
-  function move(e: React.MouseEvent) {
+  function move(e: any) {
     const { px, py } = svgXY(e);
     setCross({ px, py });
     if (pan.current) {
@@ -150,20 +144,15 @@ export default function AnalysisChart({
       setView({ i0: sv.i0 - di, i1: sv.i1 - di, y0: sv.y0 + dv, y1: sv.y1 + dv });
       return;
     }
-    if (box) { setBox({ ...box, x1: px, y1: py }); return; }
-    if (draft) {
-      const p = { i: pxToI(px), v: pxToV(py) };
-      setDraft({ ...draft, pts: [draft.pts[0], p] });
-    }
+    if (box) { setBox((b) => b && { ...b, x1: px, y1: py }); return; }
+    if (draft) setDraft((d) => d && { ...d, pts: [d.pts[0], { i: pxToI(px), v: pxToV(py) }] });
   }
   function up() {
     if (pan.current) { pan.current = null; return; }
     if (box) {
       const { x0, y0, x1, y1 } = box; setBox(null);
       if (Math.abs(x1 - x0) > 8 && Math.abs(y1 - y0) > 8) {
-        const i0 = pxToI(Math.min(x0, x1)), i1 = pxToI(Math.max(x0, x1));
-        const yTop = pxToV(Math.min(y0, y1)), yBot = pxToV(Math.max(y0, y1));
-        setView({ i0, i1, y0: yBot, y1: yTop });
+        setView({ i0: pxToI(Math.min(x0, x1)), i1: pxToI(Math.max(x0, x1)), y0: pxToV(Math.max(y0, y1)), y1: pxToV(Math.min(y0, y1)) });
       }
       return;
     }
@@ -172,28 +161,22 @@ export default function AnalysisChart({
   function commit(d: Drawing) { setDrawings((prev) => [...prev, d]); }
   const uid = () => `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
-  // ---------- TÁCTIL (móvil): 1 dedo = pan/dibujo · 2 dedos = pinch-zoom ----------
-  const touchXY = (t: React.Touch) => ({ clientX: t.clientX, clientY: t.clientY } as any);
+  // ---------- TÁCTIL ----------
   function touchStart(e: React.TouchEvent) {
     if (e.touches.length === 2) {
       const [t1, t2] = [e.touches[0], e.touches[1]];
       const rect = (svgRef.current as SVGSVGElement).getBoundingClientRect();
-      pinch.current = {
-        d: Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY),
-        cx: (t1.clientX + t2.clientX) / 2 - rect.left,
-        cy: (t1.clientY + t2.clientY) / 2 - rect.top,
-        view: v,
-      };
-      pan.current = null; setDraft(null); setBox(null);
-      return;
+      pinch.current = { d: Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY),
+        cx: (t1.clientX + t2.clientX) / 2 - rect.left, cy: (t1.clientY + t2.clientY) / 2 - rect.top, view: v };
+      pan.current = null; setDraft(null); setBox(null); return;
     }
-    if (e.touches.length === 1) down(touchXY(e.touches[0]));
+    if (e.touches.length === 1) down({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
   }
   function touchMove(e: React.TouchEvent) {
     if (pinch.current && e.touches.length === 2) {
       const [t1, t2] = [e.touches[0], e.touches[1]];
       const nd = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-      const f = pinch.current.d / (nd || 1);     // separar dedos (nd↑) ⇒ f<1 ⇒ acercar
+      const f = pinch.current.d / (nd || 1);
       const sv = pinch.current.view;
       const ci = sv.i0 + (pinch.current.cx - padL) / (plotW || 1) * (sv.i1 - sv.i0);
       const cv = sv.y1 - (pinch.current.cy - padT) / (plotH || 1) * (sv.y1 - sv.y0);
@@ -203,7 +186,7 @@ export default function AnalysisChart({
       if (i1 - i0 >= 2) setView({ i0, i1, y0, y1 });
       return;
     }
-    if (e.touches.length === 1) move(touchXY(e.touches[0]));
+    if (e.touches.length === 1) move({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
   }
   function touchEnd(e: React.TouchEvent) {
     if (e.touches.length < 2) pinch.current = null;
@@ -216,22 +199,19 @@ export default function AnalysisChart({
       if (d.type === "vline") return Math.abs(xToPx(d.pts[0].i) - px) < 6;
       const [a, b] = [d.pts[0], d.pts[1] || d.pts[0]];
       const ax = xToPx(a.i), ay = yToPx(a.v), bx = xToPx(b.i), by = yToPx(b.v);
-      // distancia punto-segmento
       const dx = bx - ax, dy = by - ay; const L2 = dx * dx + dy * dy || 1;
       let t = ((px - ax) * dx + (py - ay) * dy) / L2; t = Math.max(0, Math.min(1, t));
-      const qx = ax + t * dx, qy = ay + t * dy;
-      return Math.hypot(px - qx, py - qy) < 7;
+      return Math.hypot(px - (ax + t * dx), py - (ay + t * dy)) < 7;
     };
     setDrawings((prev) => { const idx = prev.findIndex(near); return idx >= 0 ? prev.filter((_, k) => k !== idx) : prev; });
   }
 
-  // ---------- Construcción de paths ----------
+  // ---------- Paths ----------
   const linePath = (key: string) => {
     let d = "", started = false;
     for (let i = 0; i < N; i++) {
       const val = data[i][key]; if (val == null) continue;
-      const cmd = started ? "L" : "M"; started = true;
-      d += `${cmd} ${xToPx(i).toFixed(1)} ${yToPx(val).toFixed(1)} `;
+      d += `${started ? "L" : "M"} ${xToPx(i).toFixed(1)} ${yToPx(val).toFixed(1)} `; started = true;
     }
     return d;
   };
@@ -239,7 +219,7 @@ export default function AnalysisChart({
     if (!band) return "";
     const up: string[] = [], lo: string[] = [];
     for (let i = 0; i < N; i++) {
-      const b = data[i][band.lowerKey]; const sp = data[i][band.spanKey];
+      const b = data[i][band.lowerKey], sp = data[i][band.spanKey];
       if (b == null || sp == null) continue;
       up.push(`${xToPx(i).toFixed(1)} ${yToPx(b + sp).toFixed(1)}`);
       lo.push(`${xToPx(i).toFixed(1)} ${yToPx(b).toFixed(1)}`);
@@ -248,18 +228,20 @@ export default function AnalysisChart({
     return `M ${up.join(" L ")} L ${lo.reverse().join(" L ")} Z`;
   };
 
-  // Ticks
   const xticks = useMemo(() => {
     const out: { i: number; label: string }[] = [];
     for (let k = 0; k <= 6; k++) {
       const i = Math.round(v.i0 + (v.i1 - v.i0) * (k / 6));
-      if (i >= 0 && i < N) out.push({ i, label: data[i]?.date?.slice(5) ?? "" });
+      if (i >= 0 && i < N) {
+        const dstr = data[i]?.date ?? "";
+        const label = dstr.includes("T") ? new Date(dstr).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : dstr.slice(5);
+        out.push({ i, label });
+      }
     }
     return out;
   }, [v, N, data]);
   const yticks = useMemo(() => Array.from({ length: 5 }, (_, k) => v.y0 + (v.y1 - v.y0) * (k / 4)), [v]);
 
-  // Punto más cercano al crosshair (para tooltip)
   const nearIdx = cross ? Math.round(pxToI(cross.px)) : -1;
   const nearRow = nearIdx >= 0 && nearIdx < N ? data[nearIdx] : null;
 
@@ -268,15 +250,15 @@ export default function AnalysisChart({
     { id: "pan", icon: "✋", title: "Mover (pan)" },
     { id: "zoombox", icon: "▣", title: "Zoom por caja" },
     { id: "trend", icon: "📈", title: "Línea de tendencia" },
-    { id: "hline", icon: "➖", title: "Línea horizontal (soporte/resistencia)" },
-    { id: "vline", icon: "↕", title: "Línea vertical (marca temporal)" },
-    { id: "fib", icon: "🌀", title: "Retroceso Fibonacci (arrastra máx→mín)" },
+    { id: "hline", icon: "➖", title: "Horizontal (soporte/resistencia)" },
+    { id: "vline", icon: "↕", title: "Vertical (marca temporal)" },
+    { id: "fib", icon: "🌀", title: "Fibonacci (arrastra máx→mín)" },
     { id: "rect", icon: "▭", title: "Rectángulo (zona)" },
     { id: "erase", icon: "🧽", title: "Borrar (clic sobre un dibujo)" },
   ];
+  const cursorStyle = tool === "pan" ? (pan.current ? "grabbing" : "grab") : "crosshair";
 
-  const cursorStyle = tool === "pan" ? (pan.current ? "grabbing" : "grab")
-    : tool === "cursor" ? "crosshair" : "crosshair";
+  const fmtTime = (d: string) => d.includes("T") ? new Date(d).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : d;
 
   return (
     <div>
@@ -290,7 +272,6 @@ export default function AnalysisChart({
           </button>
         ))}
         <span style={{ width: 1, height: 22, background: "#ddd", margin: "0 4px" }} />
-        {/* Color */}
         <div style={{ display: "inline-flex", gap: 3, alignItems: "center" }}>
           {DRAW_COLORS.map((c) => (
             <button key={c} onClick={() => setColor(c)} title="Color de dibujo"
@@ -302,31 +283,29 @@ export default function AnalysisChart({
         <button onClick={() => setView(null)} title="Restablecer zoom"
           style={{ height: 30, padding: "0 10px", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer", background: "#fff", fontSize: 13 }}>⟲ Vista</button>
         {drawings.length > 0 && (
-          <button onClick={() => setDrawings((p) => p.slice(0, -1))} title="Deshacer último dibujo"
-            style={{ height: 30, padding: "0 8px", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer", background: "#fff", fontSize: 12 }}>↶ Deshacer</button>
+          <button onClick={() => setDrawings((p) => p.slice(0, -1))} title="Deshacer"
+            style={{ height: 30, padding: "0 8px", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer", background: "#fff", fontSize: 12 }}>↶</button>
         )}
         {drawings.length > 0 && (
-          <button onClick={() => setDrawings([])} title="Borrar todos los dibujos"
+          <button onClick={() => setDrawings([])} title="Borrar dibujos"
             style={{ height: 30, padding: "0 8px", border: "1px solid #eecccc", borderRadius: 6, cursor: "pointer", background: "#fff", color: "#c0392b", fontSize: 12 }}>🗑️ {drawings.length}</button>
         )}
-        <span style={{ fontSize: 11, color: "#aaa", marginLeft: "auto" }}>
-          rueda: zoom · Shift: solo X · Alt: solo Y · doble-clic: reset
-        </span>
+        <span style={{ fontSize: 11, color: "#aaa", marginLeft: "auto" }}>rueda/pinch: zoom · doble-clic: reset</span>
       </div>
 
       <div ref={wrapRef} style={{ width: "100%" }}>
-        <svg ref={svgRef} width={cw} height={ch} style={{ background: "#fff", border: "1px solid #eee", borderRadius: 8, cursor: cursorStyle, touchAction: "none", display: "block", maxWidth: "100%" }}
+        <svg ref={svgRef} width={cw} height={ch}
+             style={{ background: "#fff", border: "1px solid #eee", borderRadius: 8, cursor: cursorStyle, touchAction: "none", display: "block", maxWidth: "100%" }}
              onMouseDown={down} onMouseMove={move} onMouseUp={up} onMouseLeave={() => { setCross(null); if (!draft && !box) pan.current = null; }}
              onTouchStart={touchStart} onTouchMove={touchMove} onTouchEnd={touchEnd}
              onDoubleClick={() => setView(null)}>
-          {/* Rejilla Y */}
+          {/* Rejilla */}
           {yticks.map((yv, k) => (
             <g key={k}>
               <line x1={padL} x2={cw - padR} y1={yToPx(yv)} y2={yToPx(yv)} stroke="#f2f2f2" />
               <text x={padL - 6} y={yToPx(yv) + 3} fontSize={10} fill="#999" textAnchor="end">{yv.toFixed(2)}</text>
             </g>
           ))}
-          {/* Rejilla X */}
           {xticks.map((t, k) => (
             <g key={k}>
               <line x1={xToPx(t.i)} x2={xToPx(t.i)} y1={padT} y2={ch - padB} stroke="#fafafa" />
@@ -334,15 +313,27 @@ export default function AnalysisChart({
             </g>
           ))}
 
-          {/* Banda Monte Carlo */}
           {band && bandPath() && <path d={bandPath()} fill={band.color} fillOpacity={0.10} stroke="none" />}
 
-          {/* Marcadores verticales (ej. "congelado") */}
+          {/* Marcadores verticales (ej. "ahora", "congelado") */}
           {markers.map((mk, k) => {
-            const i = data.findIndex((r) => r.date === mk.date); if (i < 0) return null;
+            const i = dateIndex[mk.date]; if (i == null) return null;
             return (<g key={k}>
               <line x1={xToPx(i)} x2={xToPx(i)} y1={padT} y2={ch - padB} stroke={mk.color || "#bbb"} strokeDasharray="3 3" />
               {mk.label && <text x={xToPx(i)} y={padT + 10} fontSize={9} fill={mk.color || "#aaa"} textAnchor="middle">{mk.label}</text>}
+            </g>);
+          })}
+
+          {/* VELAS OHLC */}
+          {candleKey && data.map((r, i) => {
+            const o = r[candleKey.o], h = r[candleKey.h], l = r[candleKey.l], c = r[candleKey.c];
+            if (o == null || c == null || h == null || l == null) return null;
+            const up = c >= o; const col = up ? "#1e824c" : "#c0392b";
+            const x = xToPx(i); const bw = Math.max(1.5, colW * 0.6);
+            const bt = yToPx(Math.max(o, c)), bb = yToPx(Math.min(o, c));
+            return (<g key={`k${i}`}>
+              <line x1={x} x2={x} y1={yToPx(h)} y2={yToPx(l)} stroke={col} strokeWidth={1} />
+              <rect x={x - bw / 2} y={bt} width={bw} height={Math.max(bb - bt, 1)} fill={col} />
             </g>);
           })}
 
@@ -352,15 +343,23 @@ export default function AnalysisChart({
                   strokeWidth={l.width ?? 1.6} strokeDasharray={l.dash ?? ""} strokeLinejoin="round" />
           ))}
 
-          {/* Dibujos del usuario */}
+          {/* Overlays (Elliott, etc.) */}
+          {overlays.map((o, k) => {
+            const i = dateIndex[o.date]; if (i == null) return null;
+            const x = xToPx(i), y = yToPx(o.price);
+            return (<g key={`ov${k}`}>
+              <circle cx={x} cy={y} r={o.filled ? 4.5 : 6} fill={o.filled ? o.color : "#fff"} stroke={o.color} strokeWidth={o.filled ? 0 : 2} />
+              {o.label && <text x={x} y={y + (o.dy ?? -10)} fontSize={12} fontWeight={o.filled ? 800 : 700} fill={o.color} textAnchor="middle">{o.label}</text>}
+            </g>);
+          })}
+
+          {/* Dibujos */}
           {[...drawings, ...(draft ? [draft] : [])].map((d) => (
             <DrawingSVG key={d.id} d={d} xToPx={xToPx} yToPx={yToPx} padL={padL} right={cw - padR} top={padT} bottom={ch - padB} />
           ))}
 
-          {/* Caja de zoom en progreso */}
           {box && (
-            <rect x={Math.min(box.x0, box.x1)} y={Math.min(box.y0, box.y1)}
-                  width={Math.abs(box.x1 - box.x0)} height={Math.abs(box.y1 - box.y0)}
+            <rect x={Math.min(box.x0, box.x1)} y={Math.min(box.y0, box.y1)} width={Math.abs(box.x1 - box.x0)} height={Math.abs(box.y1 - box.y0)}
                   fill="#2980b9" fillOpacity={0.08} stroke="#2980b9" strokeDasharray="4 3" />
           )}
 
@@ -374,18 +373,22 @@ export default function AnalysisChart({
             </g>
           )}
           {nearRow && cross && (() => {
-            const rows = lines.filter((l) => nearRow[l.key] != null);
-            const bw = 150, bh = 16 + rows.length * 13;
+            const isCandle = candleKey && nearRow[candleKey.c] != null;
+            const rowsL = lines.filter((l) => nearRow[l.key] != null);
+            const info = isCandle
+              ? [`O ${nearRow[candleKey!.o]}  H ${nearRow[candleKey!.h]}`, `L ${nearRow[candleKey!.l]}  C ${nearRow[candleKey!.c]}`,
+                 ...(candleKey!.v && nearRow[candleKey!.v] != null ? [`Vol ${Number(nearRow[candleKey!.v]).toLocaleString()}`] : [])]
+              : rowsL.map((l) => `${l.label}: ${Number(nearRow[l.key]).toFixed(2)}`);
+            if (info.length === 0) return null;
+            const bw = 156, bh = 16 + info.length * 13;
             let bx = cross.px + 12; if (bx + bw > cw - padR) bx = cross.px - bw - 12;
             const by = Math.min(Math.max(padT, cross.py - bh / 2), ch - padB - bh);
             return (
               <g pointerEvents="none">
                 <rect x={bx} y={by} width={bw} height={bh} rx={5} fill="#111" opacity={0.9} />
-                <text x={bx + 8} y={by + 14} fontSize={11} fill="#fff" fontWeight={700}>{nearRow.date}</text>
-                {rows.map((l, k) => (
-                  <text key={l.key} x={bx + 8} y={by + 27 + k * 13} fontSize={10} fill={l.color}>
-                    {l.label}: {Number(nearRow[l.key]).toFixed(2)}
-                  </text>
+                <text x={bx + 8} y={by + 14} fontSize={11} fill="#fff" fontWeight={700}>{fmtTime(nearRow.date)}</text>
+                {info.map((ln, k) => (
+                  <text key={k} x={bx + 8} y={by + 27 + k * 13} fontSize={10} fill={isCandle ? "#e5e5e5" : (rowsL[k]?.color || "#e5e5e5")}>{ln}</text>
                 ))}
               </g>
             );
@@ -396,7 +399,6 @@ export default function AnalysisChart({
   );
 }
 
-/** Renderiza un dibujo (línea, horizontal, vertical, fibonacci, rectángulo). */
 function DrawingSVG({ d, xToPx, yToPx, padL, right, top, bottom }: {
   d: Drawing; xToPx: (i: number) => number; yToPx: (v: number) => number;
   padL: number; right: number; top: number; bottom: number;
@@ -404,15 +406,10 @@ function DrawingSVG({ d, xToPx, yToPx, padL, right, top, bottom }: {
   const a = d.pts[0], b = d.pts[1] || d.pts[0];
   if (d.type === "hline") {
     const y = yToPx(a.v);
-    return (<g>
-      <line x1={padL} x2={right} y1={y} y2={y} stroke={d.color} strokeWidth={1.4} />
-      <text x={padL + 3} y={y - 3} fontSize={10} fill={d.color}>{a.v.toFixed(2)}</text>
-    </g>);
+    return (<g><line x1={padL} x2={right} y1={y} y2={y} stroke={d.color} strokeWidth={1.4} />
+      <text x={padL + 3} y={y - 3} fontSize={10} fill={d.color}>{a.v.toFixed(2)}</text></g>);
   }
-  if (d.type === "vline") {
-    const x = xToPx(a.i);
-    return <line x1={x} x2={x} y1={top} y2={bottom} stroke={d.color} strokeWidth={1.4} />;
-  }
+  if (d.type === "vline") { const x = xToPx(a.i); return <line x1={x} x2={x} y1={top} y2={bottom} stroke={d.color} strokeWidth={1.4} />; }
   if (d.type === "rect") {
     const x0 = Math.min(xToPx(a.i), xToPx(b.i)), x1 = Math.max(xToPx(a.i), xToPx(b.i));
     const y0 = Math.min(yToPx(a.v), yToPx(b.v)), y1 = Math.max(yToPx(a.v), yToPx(b.v));
@@ -421,17 +418,14 @@ function DrawingSVG({ d, xToPx, yToPx, padL, right, top, bottom }: {
   if (d.type === "fib") {
     const hi = Math.max(a.v, b.v), lo = Math.min(a.v, b.v), span = hi - lo;
     const x0 = Math.min(xToPx(a.i), xToPx(b.i)), x1 = Math.max(xToPx(a.i), xToPx(b.i));
-    return (<g>
-      {FIB.map((f, k) => {
-        const price = hi - span * f; const y = yToPx(price);
-        return (<g key={k}>
-          <line x1={x0} x2={Math.max(x1, right)} y1={y} y2={y} stroke={d.color} strokeWidth={0.9} strokeDasharray="4 3" opacity={0.8} />
-          <text x={x0 + 2} y={y - 2} fontSize={9} fill={d.color}>{(f * 100).toFixed(1)}% · {price.toFixed(2)}</text>
-        </g>);
-      })}
-    </g>);
+    return (<g>{FIB.map((f, k) => {
+      const price = hi - span * f, y = yToPx(price);
+      return (<g key={k}>
+        <line x1={x0} x2={Math.max(x1, right)} y1={y} y2={y} stroke={d.color} strokeWidth={0.9} strokeDasharray="4 3" opacity={0.8} />
+        <text x={x0 + 2} y={y - 2} fontSize={9} fill={d.color}>{(f * 100).toFixed(1)}% · {price.toFixed(2)}</text>
+      </g>);
+    })}</g>);
   }
-  // trend
   return (<g>
     <line x1={xToPx(a.i)} y1={yToPx(a.v)} x2={xToPx(b.i)} y2={yToPx(b.v)} stroke={d.color} strokeWidth={1.6} />
     <circle cx={xToPx(a.i)} cy={yToPx(a.v)} r={2.5} fill={d.color} />
