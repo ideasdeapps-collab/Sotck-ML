@@ -482,6 +482,13 @@ def forecast_history(ticker: str, limit_runs: int = 10):
     if not sb.enabled():
         raise HTTPException(503, "Supabase no está configurado en el servidor.")
     return {"ticker": ticker.upper(), "runs": sb.get_forecast_history(ticker, limit_runs)}
+@app.get("/intraday-sessions")
+    def list_intraday_sessions(ticker: str):
+        """Sesiones (fechas) que tienen snapshots guardados para el ticker."""
+        if not intraday_store.enabled():
+            raise HTTPException(503, "Supabase no está configurado.")
+        return {"ticker": ticker.upper(),
+                "sessions": intraday_store.list_sessions(ticker)}
 
 
 @app.post("/backfill-actuals")
