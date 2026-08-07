@@ -3,9 +3,11 @@ supabase_client.py — Persistencia de forecasts en Supabase (todas las curvas)
 =============================================================================
 No-op si SUPABASE_URL / SUPABASE_SERVICE_KEY no están configuradas.
 
-Guarda TODAS las curvas por punto: predicted(XGBoost), mlp, ml_sentiment,
-sentiment_only, psy_a, psy_b, y bandas Monte Carlo (mc_median/p5/p25/p75/p95).
-Requiere haber corrido supabase/schema_v2_curvas.sql (añade las columnas nuevas).
+Guarda TODAS las curvas por punto: predicted(XGBoost), ext(Extendido AH+PM), mlp,
+ml_sentiment, sentiment_only, psy_a, psy_b, y bandas Monte Carlo
+(mc_median/p5/p25/p75/p95).
+Requiere haber corrido supabase/schema_v2_curvas.sql + la columna 'ext':
+    alter table forecast_points add column if not exists ext numeric;
 """
 
 from __future__ import annotations
@@ -64,7 +66,7 @@ def save_full_snapshot(ticker: str, last_close: float, horizon: int,
                        points: list[dict], meta: dict | None = None) -> Optional[str]:
     """
     points: lista de dicts con claves opcionales por punto:
-      target_date, xgb, mlp, ml_sentiment, sentiment_only, psy_a, psy_b,
+      target_date, xgb, ext, mlp, ml_sentiment, sentiment_only, psy_a, psy_b,
       mc_median, mc_p5, mc_p25, mc_p75, mc_p95
     """
     if not _ENABLED:
@@ -80,7 +82,7 @@ def save_full_snapshot(ticker: str, last_close: float, horizon: int,
     r.raise_for_status()
     rid = r.json()[0]["id"]
     pts = [{"run_id": rid, "ticker": ticker.upper(), "target_date": p["target_date"],
-            "predicted": p.get("xgb"), "mlp": p.get("mlp"),
+            "predicted": p.get("xgb"), "ext": p.get("ext"), "mlp": p.get("mlp"),
             "ml_sentiment": p.get("ml_sentiment"), "sentiment_only": p.get("sentiment_only"),
             "psy_a": p.get("psy_a"), "psy_b": p.get("psy_b"),
             "mc_median": p.get("mc_median"), "mc_p5": p.get("mc_p5"),
@@ -92,9 +94,9 @@ def save_full_snapshot(ticker: str, last_close: float, horizon: int,
 
 
 # --------------------------------------------------------------------------- #
-# Lectura del histórico (ahora incluye todas las curvas)
+# Lectura del histórico (ahora incluye todas las curvas + ext)
 # --------------------------------------------------------------------------- #
-_POINT_COLS = ("run_id,target_date,predicted,mlp,ml_sentiment,sentiment_only,"
+_POINT_COLS = ("run_id,target_date,predicted,ext,mlp,ml_sentiment,sentiment_only,"
                "psy_a,psy_b,mc_median,mc_p5,mc_p25,mc_p75,mc_p95,actual_close")
 
 
