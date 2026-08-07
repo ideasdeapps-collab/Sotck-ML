@@ -3,12 +3,14 @@
 /**
  * IntradaySessionTab.tsx — 🕐 Sesión intradía (AnalysisChart + precio EN VIVO)
  * ==========================================================================
- * Igual que antes (sesiones, quote, snapshots, scorecard, guardado, velas de
- * sesiones pasadas, Elliott, herramientas de dibujo) + NUEVO:
- *   • Polling cada 60s a /intraday-live (solo en vista "En vivo").
- *   • El NÚMERO del precio se actualiza cada minuto (🔴 con hora).
- *   • Una SEÑAL horizontal móvil en la gráfica marca dónde está el precio ahora.
- *   (No se dibuja línea atrasada; solo la señal + el número.)
+ * • Polling cada 60s a /intraday-live (número + señal móvil, solo "En vivo").
+ * • AUTO-REFRESH de las velas cada 90s (silencioso) → la última vela real
+ *   aparece sola conforme avanza la sesión (sin pulsar Actualizar).
+ * • SCORECARD automático: se calcula solo cada vez que se despliega info
+ *   (ya no hay botón "Desempeño").
+ *
+ * NOTA backend: baja el caché de fetch_today_bars a ttl=60 (no 900) para que
+ * las velas nuevas no lleguen con hasta 15 min extra de retardo.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -34,15 +36,15 @@ export default function IntradaySessionTab() {
   const [snaps, setSnaps] = useState<any[]>([]);
   const [score, setScore] = useState<any>(null);
   const [showElliott, setShowElliott] = useState(true);
-  const [showScore, setShowScore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
-  // NUEVO: precio en vivo (minuto a minuto)
+  // Precio en vivo (minuto a minuto)
   const [live, setLive] = useState<{ price: number | null; time: string | null } | null>(null);
   const pollRef = useRef<any>(null);
+  const sessRef = useRef<any>(null);   // auto-refresh de velas
 
   const isLive = selSession === LIVE;
 
@@ -64,7 +66,7 @@ export default function IntradaySessionTab() {
 
   useEffect(() => {
     if (!ticker) return;
-    setError(null); setMsg(null); setScore(null); setShowScore(false);
+    setError(null); setMsg(null); setScore(null);
     setSelSession(LIVE);
     cargarSesionesLista(ticker);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -72,7 +74,7 @@ export default function IntradaySessionTab() {
 
   useEffect(() => {
     if (!ticker) return;
-    setMsg(null); setScore(null); setShowScore(false);
+    setMsg(null);
     if (isLive) {
       setPastBars([]); cargarSesion(ticker); cargarQuote(ticker); cargarSnaps(ticker, null);
     } else {
@@ -81,7 +83,7 @@ export default function IntradaySessionTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selSession, ticker]);
 
-  // NUEVO: polling de precio en vivo (solo en la vista "En vivo")
+  // Polling del precio en vivo (número + señal) — solo "En vivo"
   useEffect(() => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     if (!isLive || !ticker) { setLive(null); return; }
@@ -91,21 +93,49 @@ export default function IntradaySessionTab() {
         if (r.ok) { const j = await r.json(); setLive({ price: j.price, time: j.time }); }
       } catch { /* silencioso */ }
     };
-    tick();                                       // inmediato
-    pollRef.current = setInterval(tick, 60000);   // cada 60 s
+    tick();
+    pollRef.current = setInterval(tick, 60000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLive, ticker]);
+
+  // AUTO-REFRESH de las VELAS cada 90s (silencioso) — solo "En vivo"
+  useEffect(() => {
+    if (sessRef.current) { clearInterval(sessRef.current); sessRef.current = null; }
+    if (!isLive || !ticker) return;
+    sessRef.current = setInterval(() => cargarSesion(ticker, true), 90000);
+    return () => { if (sessRef.current) clearInterval(sessRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLive, ticker]);
+
+  // SCORECARD automático: se recalcula cuando cambia lo que se muestra
+  useEffect(() => {
+    if (!ticker) { setScore(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const q = isLive ? "" : `&session_date=${selSession}`;
+        const r = await fetch(`${API_URL}/intraday-scorecard?ticker=${ticker}${q}`);
+        if (!cancelled) setScore(r.ok ? await r.json() : null);
+      } catch { if (!cancelled) setScore(null); }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticker, selSession, snaps, data, pastBars]);
 
   async function cargarSesionesLista(tk: string) {
     try { const r = await fetch(`${API_URL}/intraday-sessions?ticker=${tk}`); setSessions(r.ok ? (await r.json()).sessions || [] : []); }
     catch { setSessions([]); }
   }
-  async function cargarSesion(tk: string) {
-    setLoading(true);
-    try { const res = await fetch(`${API_URL}/predict-intraday?ticker=${tk}`);
-      if (!res.ok) throw new Error((await res.json()).detail || "Error API intradía"); setData(await res.json()); }
-    catch (e: any) { setError(e.message); setData(null); } finally { setLoading(false); }
+  async function cargarSesion(tk: string, silent = false) {
+    if (!silent) setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/predict-intraday?ticker=${tk}`);
+      if (!res.ok) throw new Error((await res.json()).detail || "Error API intradía");
+      setData(await res.json());
+      if (!silent) setError(null);
+    } catch (e: any) { if (!silent) { setError(e.message); setData(null); } }
+    finally { if (!silent) setLoading(false); }
   }
   async function cargarVelasPasadas(tk: string, sd: string) {
     setLoading(true);
@@ -146,16 +176,6 @@ export default function IntradaySessionTab() {
       setMsg(`✅ Predicción guardada (${payload.points.length} barras).`);
       await cargarSnaps(ticker, null); await cargarSesionesLista(ticker);
     } catch (e: any) { setError(e.message); } finally { setSaving(false); }
-  }
-
-  async function verDesempeno() {
-    setShowScore(true); setScore(null); setError(null);
-    try {
-      const q = isLive ? "" : `&session_date=${selSession}`;
-      const r = await fetch(`${API_URL}/intraday-scorecard?ticker=${ticker}${q}`);
-      if (!r.ok) throw new Error((await r.json()).detail || "Error scorecard");
-      setScore(await r.json());
-    } catch (e: any) { setError(e.message); }
   }
 
   // ---------- Construcción de datos para AnalysisChart ----------
@@ -217,7 +237,7 @@ export default function IntradaySessionTab() {
   const up = (chg ?? 0) >= 0;
   const sessionClosed = isLive && data && (!data.predicted || data.predicted.length === 0);
   const hayGrafica = !!chart;
-  const shownPrice = live?.price ?? quote?.price;   // número visible: live si existe, si no el quote
+  const shownPrice = live?.price ?? quote?.price;
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", fontFamily: "system-ui" }}>
@@ -248,7 +268,7 @@ export default function IntradaySessionTab() {
           <>
             <button onClick={() => cargarSesion(ticker)} disabled={loading || !ticker}
               style={{ padding: "10px 18px", background: "#111", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>
-              {loading ? "Calculando…" : "↻ Calcular"}
+              {loading ? "Actualizando…" : "↻ Actualizar"}
             </button>
             <button onClick={guardar} disabled={saving || !data || sessionClosed}
               title={sessionClosed ? "La sesión ya cerró" : "Guarda la predicción actual"}
@@ -258,13 +278,10 @@ export default function IntradaySessionTab() {
             </button>
           </>
         )}
-        <button onClick={verDesempeno} disabled={!ticker}
-          style={{ padding: "10px 16px", background: "#1e824c", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>
-          📊 Desempeño
-        </button>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#666" }}>
           <input type="checkbox" checked={showElliott} onChange={(e) => setShowElliott(e.target.checked)} /> Elliott
         </label>
+        {isLive && <span style={{ fontSize: 11, color: "#0a84ff" }}>⟳ auto cada 90s</span>}
       </div>
 
       {/* Precio EN VIVO (número que cambia minuto a minuto) */}
@@ -293,7 +310,7 @@ export default function IntradaySessionTab() {
       {!isLive && (
         <div style={{ padding: "8px 12px", marginBottom: 10, borderRadius: 8, fontSize: 12,
           background: "#eef2f6", borderLeft: "4px solid #2980b9", color: "#2c3e50" }}>
-          📌 Sesión guardada del <b>{fechaCorta(selSession)}</b> — velas reales + {snaps.length} predicción(es). Pulsa 📊 para el scorecard.
+          📌 Sesión guardada del <b>{fechaCorta(selSession)}</b> — velas reales + {snaps.length} predicción(es).
         </div>
       )}
 
@@ -301,7 +318,7 @@ export default function IntradaySessionTab() {
         <div style={{ padding: "56px 20px", textAlign: "center", background: "#f7f9fb", borderRadius: 12, border: "1px dashed #d5dce3", color: "#7f8c8d" }}>
           <div style={{ fontSize: 34, marginBottom: 8 }}>🕐</div>
           <div style={{ fontSize: 15, fontWeight: 600, color: "#5a6b7b" }}>
-            {isLive ? "Elige un ticker y pulsa «↻ Calcular»" : "No hay datos para esta sesión"}
+            {isLive ? "Cargando sesión…" : "No hay datos para esta sesión"}
           </div>
         </div>
       )}
@@ -334,57 +351,53 @@ export default function IntradaySessionTab() {
         </>
       )}
 
-      {/* SCORECARD */}
-      {showScore && (
+      {/* SCORECARD automático (sin botón) */}
+      {score && (score.rows?.length > 0 || score.verdict) && (
         <div style={{ marginTop: 20, padding: 16, background: "#f7f9fb", borderRadius: 10, border: "1px solid #e5eaf0" }}>
           <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>
             📊 Desempeño — {ticker} {!isLive && `· ${fechaCorta(selSession)}`}
           </div>
-          {!score ? <p style={{ fontSize: 13, color: "#999" }}>Cargando scorecard…</p> : (
-            <>
-              {score.verdict && (
-                <div style={{ padding: 10, marginBottom: 10, borderRadius: 8, fontSize: 13,
-                  background: (score.avg_skill ?? 0) > 0.05 ? "#eafaf1" : (score.avg_skill ?? 0) < -0.05 ? "#fbeeee" : "#fff8e1",
-                  borderLeft: `4px solid ${(score.avg_skill ?? 0) > 0.05 ? "#1e824c" : (score.avg_skill ?? 0) < -0.05 ? "#c0392b" : "#f39c12"}` }}>
-                  <b>Veredicto:</b> {score.verdict}
-                  {score.avg_skill != null && <span style={{ color: "#666" }}> · Skill medio: <b>{(score.avg_skill * 100).toFixed(0)}%</b></span>}
-                </div>
-              )}
-              {score.rows?.length ? (
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
-                    <thead>
-                      <tr style={{ background: "#eef2f6" }}>
-                        <th style={{ textAlign: "left", padding: "8px 10px" }}>Calculado</th>
-                        <th style={{ textAlign: "right", padding: "8px 10px" }}>Barras eval.</th>
-                        <th style={{ textAlign: "right", padding: "8px 10px" }}>MAPE modelo</th>
-                        <th style={{ textAlign: "right", padding: "8px 10px" }}>MAPE baseline</th>
-                        <th style={{ textAlign: "right", padding: "8px 10px" }}>Skill</th>
-                        <th style={{ textAlign: "center", padding: "8px 10px" }}>Dir.</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {score.rows.map((r: any) => (
-                        <tr key={r.id} style={{ borderBottom: "1px solid #eef2f6" }}>
-                          <td style={{ padding: "7px 10px" }}>{hm(r.calc_time)}</td>
-                          <td style={{ textAlign: "right", padding: "7px 10px" }}>{r.evaluated_bars}</td>
-                          <td style={{ textAlign: "right", padding: "7px 10px" }}>{r.mape == null ? "—" : `${(r.mape * 100).toFixed(2)}%`}</td>
-                          <td style={{ textAlign: "right", padding: "7px 10px", color: "#888" }}>{r.mape_baseline == null ? "—" : `${(r.mape_baseline * 100).toFixed(2)}%`}</td>
-                          <td style={{ textAlign: "right", padding: "7px 10px", fontWeight: 700, color: r.skill == null ? "#999" : r.skill > 0 ? "#1e824c" : "#c0392b" }}>
-                            {r.skill == null ? "—" : `${r.skill > 0 ? "+" : ""}${(r.skill * 100).toFixed(0)}%`}
-                          </td>
-                          <td style={{ textAlign: "center", padding: "7px 10px" }}>{r.dir_ok == null ? "—" : r.dir_ok ? "✅" : "❌"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : <p style={{ fontSize: 13, color: "#999" }}>Sin snapshots evaluables (curvas vacías o precio real aún no alcanza las fechas).</p>}
-              <p style={{ fontSize: 11, color: "#999", marginTop: 10 }}>
-                ⓘ <b>Skill</b> = cuánto le gana el modelo al baseline “sin cambio”. &gt; 0 = aporta. Análisis educativo, no recomendación.
-              </p>
-            </>
+          {score.verdict && (
+            <div style={{ padding: 10, marginBottom: 10, borderRadius: 8, fontSize: 13,
+              background: (score.avg_skill ?? 0) > 0.05 ? "#eafaf1" : (score.avg_skill ?? 0) < -0.05 ? "#fbeeee" : "#fff8e1",
+              borderLeft: `4px solid ${(score.avg_skill ?? 0) > 0.05 ? "#1e824c" : (score.avg_skill ?? 0) < -0.05 ? "#c0392b" : "#f39c12"}` }}>
+              <b>Veredicto:</b> {score.verdict}
+              {score.avg_skill != null && <span style={{ color: "#666" }}> · Skill medio: <b>{(score.avg_skill * 100).toFixed(0)}%</b></span>}
+            </div>
           )}
+          {score.rows?.length ? (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: "#eef2f6" }}>
+                    <th style={{ textAlign: "left", padding: "8px 10px" }}>Calculado</th>
+                    <th style={{ textAlign: "right", padding: "8px 10px" }}>Barras eval.</th>
+                    <th style={{ textAlign: "right", padding: "8px 10px" }}>MAPE modelo</th>
+                    <th style={{ textAlign: "right", padding: "8px 10px" }}>MAPE baseline</th>
+                    <th style={{ textAlign: "right", padding: "8px 10px" }}>Skill</th>
+                    <th style={{ textAlign: "center", padding: "8px 10px" }}>Dir.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {score.rows.map((r: any) => (
+                    <tr key={r.id} style={{ borderBottom: "1px solid #eef2f6" }}>
+                      <td style={{ padding: "7px 10px" }}>{hm(r.calc_time)}</td>
+                      <td style={{ textAlign: "right", padding: "7px 10px" }}>{r.evaluated_bars}</td>
+                      <td style={{ textAlign: "right", padding: "7px 10px" }}>{r.mape == null ? "—" : `${(r.mape * 100).toFixed(2)}%`}</td>
+                      <td style={{ textAlign: "right", padding: "7px 10px", color: "#888" }}>{r.mape_baseline == null ? "—" : `${(r.mape_baseline * 100).toFixed(2)}%`}</td>
+                      <td style={{ textAlign: "right", padding: "7px 10px", fontWeight: 700, color: r.skill == null ? "#999" : r.skill > 0 ? "#1e824c" : "#c0392b" }}>
+                        {r.skill == null ? "—" : `${r.skill > 0 ? "+" : ""}${(r.skill * 100).toFixed(0)}%`}
+                      </td>
+                      <td style={{ textAlign: "center", padding: "7px 10px" }}>{r.dir_ok == null ? "—" : r.dir_ok ? "✅" : "❌"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <p style={{ fontSize: 13, color: "#999" }}>Sin snapshots evaluables aún (guarda predicciones durante la sesión).</p>}
+          <p style={{ fontSize: 11, color: "#999", marginTop: 10 }}>
+            ⓘ <b>Skill</b> = cuánto le gana el modelo al baseline “sin cambio”. &gt; 0 = aporta. Análisis educativo, no recomendación.
+          </p>
         </div>
       )}
     </div>
