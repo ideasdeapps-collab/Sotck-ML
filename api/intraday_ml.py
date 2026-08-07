@@ -102,7 +102,7 @@ def fetch_bars_for_date(ticker: str, session_date: str) -> pd.DataFrame:
     url = (f"https://api.polygon.io/v2/aggs/ticker/{ticker.upper()}/range/15/minute/"
            f"{session_date}/{session_date}"
            f"?adjusted=true&sort=asc&limit=50000&apiKey={POLYGON_API_KEY}")
-    res = get_json(url, ttl=TTL_INTRADAY).get("results", [])
+    res = get_json(url, ttl=60).get("results", []) # ← 60s, no 900
     if not res:
         return pd.DataFrame()
     df = pd.DataFrame(res).rename(columns={"o": "open", "h": "high", "l": "low",
