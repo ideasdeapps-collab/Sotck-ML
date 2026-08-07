@@ -4,9 +4,9 @@
  * ModelValidationTab.tsx — 📌 Validación de modelos (con AnalysisChart potente)
  * ============================================================================
  * Misma lógica de datos (precio real de Supabase, snapshots, cálculo en vivo,
- * métricas) pero la GRÁFICA ahora usa <AnalysisChart>: zoom dinámico (rueda,
- * pan, zoom-caja) + herramientas de dibujo (tendencia, horizontal, vertical,
- * Fibonacci, rectángulo) que persisten por ticker.
+ * métricas) pero la GRÁFICA usa <AnalysisChart>: zoom dinámico + dibujo.
+ * NUEVO: curva XGBoost Extendido (AH+PM) en la vista "En vivo", para comparar
+ * su acierto (MAPE) contra el XGBoost original en la tabla de métricas.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -16,6 +16,7 @@ const API_URL = process.env.NEXT_PUBLIC_ML_API_URL || "http://localhost:8000";
 
 const MODELS = [
   { key: "predicted", label: "XGBoost", color: "#e67e22" },
+  { key: "ext", label: "XGBoost Extendido (AH+PM)", color: "#0a84ff" },
   { key: "mlp", label: "Red Neuronal (MLP)", color: "#16a085" },
   { key: "ml_sentiment", label: "XGBoost + Sentimiento", color: "#8e44ad" },
   { key: "sentiment_only", label: "Sentimiento puro", color: "#d35400" },
@@ -82,12 +83,13 @@ export default function ModelValidationTab() {
   async function calcLive(tk: string) {
     setLoadingLive(true); setError(null); setMsg(null);
     try {
-      const [fRes, mRes, sRes, pRes] = await Promise.all([
+      const [fRes, mRes, sRes, pRes, eRes] = await Promise.all([
         fetch(`${API_URL}/forecast`, { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ticker: tk, horizon, n_sims: 10000, save: false }) }),
         fetch(`${API_URL}/predict-mlp?ticker=${tk}&horizon=${horizon}`),
         fetch(`${API_URL}/forecast-sentiment?ticker=${tk}&horizon=${horizon}`),
         fetch(`${API_URL}/psychology?ticker=${tk}&horizon=${horizon}`),
+        fetch(`${API_URL}/predict-extended?ticker=${tk}&horizon=${horizon}`),
       ]);
       if (!fRes.ok) throw new Error((await fRes.json()).detail || "Error en /forecast");
       const fj = await fRes.json(); const pred = fj.prediction; const sim = fj.simulation;
@@ -108,6 +110,11 @@ export default function ModelValidationTab() {
         ((pj.contrarian || {}).curve || []).forEach((p: any) => (byDate[p.date] = { ...(byDate[p.date] || { target_date: p.date }), psy_a: p.close }));
         ((pj.learned || {})?.curve || []).forEach((p: any) => (byDate[p.date] = { ...(byDate[p.date] || { target_date: p.date }), psy_b: p.close }));
       }
+      // ── Modelo EXTENDIDO (RTH + AH + PM) ──
+      if (eRes.ok) {
+        const ej = await eRes.json();
+        (ej.prediction || []).forEach((p: any) => (byDate[p.date] = { ...(byDate[p.date] || { target_date: p.date }), ext: p.close }));
+      }
       setLivePoints(Object.values(byDate).sort((a: any, b: any) => a.target_date.localeCompare(b.target_date)));
       setViewSel("live");
     } catch (e: any) { setError(e.message); setLivePoints([]); }
@@ -123,7 +130,7 @@ export default function ModelValidationTab() {
       });
       if (!res.ok) throw new Error((await res.json()).detail || "Error al guardar");
       const j = await res.json();
-      setMsg(`✅ Predicción congelada (${j.points} puntos, 7 curvas). id ${String(j.run_id).slice(0, 8)}…`);
+      setMsg(`✅ Predicción congelada (${j.points} puntos). id ${String(j.run_id).slice(0, 8)}…`);
       const hRes = await fetch(`${API_URL}/forecast-history?ticker=${ticker}&limit_runs=30`);
       if (hRes.ok) { const rs = (await hRes.json()).runs || []; setRuns(rs); setViewSel(j.run_id); }
     } catch (e: any) { setError(e.message); }
@@ -150,7 +157,7 @@ export default function ModelValidationTab() {
     activePoints.forEach((pt: any) => {
       byDate[pt.target_date] = {
         ...(byDate[pt.target_date] || { date: pt.target_date }),
-        predicted: pt.predicted, mlp: pt.mlp, ml_sentiment: pt.ml_sentiment,
+        predicted: pt.predicted, ext: pt.ext, mlp: pt.mlp, ml_sentiment: pt.ml_sentiment,
         sentiment_only: pt.sentiment_only, psy_a: pt.psy_a, psy_b: pt.psy_b, mc_median: pt.mc_median,
         bandBase: pt.mc_p5, band: (pt.mc_p95 != null && pt.mc_p5 != null) ? pt.mc_p95 - pt.mc_p5 : null,
       };
@@ -174,7 +181,7 @@ export default function ModelValidationTab() {
 
   const evalCount = metrics.evalN;
 
-  // Config de líneas para AnalysisChart (7 modelos + precio real)
+  // Config de líneas para AnalysisChart (8 modelos + precio real)
   const chartLines = [
     ...MODELS.map((m) => ({ key: m.key, color: m.color, label: m.label, width: 1.6, dash: "4 3" })),
     { key: "actual", color: "#111", label: "Precio REAL", width: 2.6 },
@@ -229,6 +236,9 @@ export default function ModelValidationTab() {
       {msg && <p style={{ color: "#1e824c", fontSize: 13 }}>{msg}</p>}
       {error && <p style={{ color: "#c0392b", fontSize: 13 }}>⚠️ {error}</p>}
       {isLive && <p style={{ fontSize: 12, color: "#8e44ad", margin: "2px 0 6px" }}>🟢 Vista <b>EN VIVO</b> (sin guardar). Pulsa <b>💾</b> para congelarla.</p>}
+      {!isLive && activePoints.length > 0 && !activePoints.some((p: any) => p.ext != null) && (
+        <p style={{ fontSize: 12, color: "#b8860b", margin: "2px 0 6px" }}>ⓘ Los snapshots guardados no incluyen la curva Extendida (solo aparece en «En vivo»).</p>
+      )}
 
       {/* Estado vacío */}
       {!loadingHist && realHist.length === 0 && runs.length === 0 && livePoints.length === 0 && !error && (
