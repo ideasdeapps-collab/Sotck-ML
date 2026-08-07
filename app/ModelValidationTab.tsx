@@ -3,14 +3,14 @@
 /**
  * ModelValidationTab.tsx — 📌 Validación de modelos (con AnalysisChart potente)
  * ============================================================================
- * Misma lógica de datos (precio real de Supabase, snapshots, cálculo en vivo,
- * métricas) pero la GRÁFICA usa <AnalysisChart>: zoom dinámico + dibujo.
- * • Curva XGBoost Extendido (AH+PM) para comparar acierto vs. el original.
- * • DESEMPEÑO AUTOMÁTICO: al elegir un ticker se calcula solo (sin botón).
- *   El botón «↻ Recalcular» queda como refresco manual opcional.
+ * • Al elegir TICKER → carga precio real (Supabase) + lista de snapshots. NO
+ *   calcula los modelos en vivo (eso es manual con «↻ Calcular en vivo»).
+ * • El MAPE (desempeño) se calcula SOLO al seleccionar un snapshot del dropdown
+ *   (o al pulsar «↻ Calcular en vivo»). Es automático a partir de la selección.
+ * • Curva XGBoost Extendido (AH+PM) incluida en el cálculo en vivo.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AnalysisChart from "./AnalysisChart";
 
 const API_URL = process.env.NEXT_PUBLIC_ML_API_URL || "http://localhost:8000";
@@ -44,9 +44,6 @@ export default function ModelValidationTab() {
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
-  // Evita cálculos en vivo solapados al cambiar de ticker rápido.
-  const runToken = useRef(0);
-
   useEffect(() => {
     (async () => {
       try {
@@ -70,18 +67,10 @@ export default function ModelValidationTab() {
     })();
   }, [ticker]);
 
-  // DESEMPEÑO AUTOMÁTICO: al elegir ticker → carga snapshots + calcula en vivo (sin botón)
-  useEffect(() => {
-    if (!ticker) return;
-    const token = ++runToken.current;
-    (async () => {
-      await loadHistory(ticker, token);
-      await calcLive(ticker, token);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker]);
+  // Al cambiar TICKER → SOLO cargar la lista de snapshots (NO calcular en vivo).
+  useEffect(() => { if (ticker) loadHistory(ticker); /* eslint-disable-next-line */ }, [ticker]);
 
-  async function loadHistory(tk: string, token?: number) {
+  async function loadHistory(tk: string) {
     setLoadingHist(true); setError(null); setMsg(null);
     setLivePoints([]); setLiveReal([]);
     try {
@@ -89,13 +78,12 @@ export default function ModelValidationTab() {
       if (res.status === 503) throw new Error("Supabase no está configurado en el servidor.");
       if (!res.ok) throw new Error((await res.json()).detail || "Error al leer snapshots");
       const rs = (await res.json()).runs || [];
-      if (token != null && token !== runToken.current) return;   // ticker cambió: descarta
       setRuns(rs); setViewSel(rs.length ? rs[0].run_id : "");
     } catch (e: any) { setError(e.message); setRuns([]); setViewSel(""); }
     finally { setLoadingHist(false); }
   }
 
-  async function calcLive(tk: string, token?: number) {
+  async function calcLive(tk: string) {
     setLoadingLive(true); setError(null); setMsg(null);
     try {
       const [fRes, mRes, sRes, pRes, eRes] = await Promise.all([
@@ -108,7 +96,7 @@ export default function ModelValidationTab() {
       ]);
       if (!fRes.ok) throw new Error((await fRes.json()).detail || "Error en /forecast");
       const fj = await fRes.json(); const pred = fj.prediction; const sim = fj.simulation;
-      const lr = (pred.history || []).map((h: any) => ({ date: h.date, close: h.close }));
+      setLiveReal((pred.history || []).map((h: any) => ({ date: h.date, close: h.close })));
       const byDate: Record<string, any> = {};
       pred.prediction.forEach((p: any, i: number) => {
         byDate[p.date] = { target_date: p.date, predicted: p.close,
@@ -125,12 +113,11 @@ export default function ModelValidationTab() {
         ((pj.contrarian || {}).curve || []).forEach((p: any) => (byDate[p.date] = { ...(byDate[p.date] || { target_date: p.date }), psy_a: p.close }));
         ((pj.learned || {})?.curve || []).forEach((p: any) => (byDate[p.date] = { ...(byDate[p.date] || { target_date: p.date }), psy_b: p.close }));
       }
+      // ── Modelo EXTENDIDO (RTH + AH + PM) ──
       if (eRes.ok) {
         const ej = await eRes.json();
         (ej.prediction || []).forEach((p: any) => (byDate[p.date] = { ...(byDate[p.date] || { target_date: p.date }), ext: p.close }));
       }
-      if (token != null && token !== runToken.current) return;   // ticker cambió: descarta
-      setLiveReal(lr);
       setLivePoints(Object.values(byDate).sort((a: any, b: any) => a.target_date.localeCompare(b.target_date)));
       setViewSel("live");
     } catch (e: any) { setError(e.message); setLivePoints([]); }
@@ -181,6 +168,7 @@ export default function ModelValidationTab() {
     return Object.values(byDate).sort((a: any, b: any) => a.date.localeCompare(b.date));
   }, [realByDate, activePoints]);
 
+  // MAPE: se calcula SOLO cuando hay puntos seleccionados (snapshot o en vivo).
   const metrics = useMemo(() => {
     const pts = activePoints.filter((p: any) => realByDate[p.target_date] != null);
     const rows = MODELS.map((m) => {
@@ -196,7 +184,6 @@ export default function ModelValidationTab() {
   }, [activePoints, realByDate]);
 
   const evalCount = metrics.evalN;
-  const calculando = loadingLive || loadingHist;
 
   // Config de líneas para AnalysisChart (8 modelos + precio real)
   const chartLines = [
@@ -224,18 +211,16 @@ export default function ModelValidationTab() {
             style={{ padding: 8, width: 150, border: "1px solid #ddd", borderRadius: 6 }} />
         </label>
         <button onClick={() => ticker && calcLive(ticker)} disabled={loadingLive || !ticker}
-          title="Vuelve a calcular el desempeño en vivo (ya se calcula solo al elegir ticker)"
           style={{ padding: "10px 16px", background: "#2c3e50", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>
-          {loadingLive ? "Calculando…" : "↻ Recalcular"}
+          {loadingLive ? "Calculando…" : "↻ Calcular en vivo"}
         </button>
         <button onClick={saveSnapshot} disabled={!!busy || !ticker || livePoints.length === 0}
           style={{ padding: "10px 16px", background: "#8e44ad", color: "#fff", border: "none", borderRadius: 6, cursor: livePoints.length === 0 ? "not-allowed" : "pointer" }}>
           {busy === "save" ? "Guardando…" : "💾 Guardar esta predicción"}
         </button>
-        {calculando && <span style={{ fontSize: 11, color: "#2980b9" }}>⟳ calculando desempeño…</span>}
       </div>
 
-      {/* Selector de snapshot */}
+      {/* Selector de snapshot — al seleccionar uno, el MAPE se calcula solo */}
       <div style={{ display: "flex", gap: 10, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
         <span style={{ fontSize: 12, color: "#666" }}>Ver:</span>
         <select value={viewSel} onChange={(e) => setViewSel(e.target.value)} disabled={loadingHist}
@@ -259,15 +244,15 @@ export default function ModelValidationTab() {
         <p style={{ fontSize: 12, color: "#b8860b", margin: "2px 0 6px" }}>ⓘ Este snapshot se guardó antes de añadir la curva Extendida (solo aparece en los nuevos).</p>
       )}
 
-      {/* Estado vacío / cargando inicial */}
-      {series.length === 0 && !error && (
+      {/* Estado vacío */}
+      {!loadingHist && realHist.length === 0 && runs.length === 0 && livePoints.length === 0 && !error && (
         <div style={{ padding: "56px 20px", textAlign: "center", background: "#f7f9fb",
                       borderRadius: 12, border: "1px dashed #d5dce3", color: "#7f8c8d", marginTop: 6 }}>
-          <div style={{ fontSize: 34, marginBottom: 8 }}>{calculando ? "⏳" : "📌"}</div>
+          <div style={{ fontSize: 34, marginBottom: 8 }}>📌</div>
           <div style={{ fontSize: 15, fontWeight: 600, color: "#5a6b7b" }}>
-            {calculando ? "Calculando desempeño de los modelos…" : (ticker ? `Sin datos para ${ticker}` : "Elige un ticker")}
+            {ticker ? `Sin datos para ${ticker}` : "Elige un ticker"}
           </div>
-          {!calculando && <div style={{ fontSize: 13, marginTop: 4 }}>El desempeño se calcula solo al elegir un ticker.</div>}
+          <div style={{ fontSize: 13, marginTop: 4 }}>Selecciona un snapshot para ver su desempeño, o pulsa «↻ Calcular en vivo».</div>
         </div>
       )}
 
@@ -278,12 +263,12 @@ export default function ModelValidationTab() {
             band={{ lowerKey: "bandBase", spanKey: "band", color: "#3498db", label: "Banda P5–P95" }}
             markers={chartMarkers} storageKey={`mv_draw_${ticker}`} height={460} />
 
-          {/* Métricas (desempeño automático) */}
+          {/* Métricas — se calculan al seleccionar un snapshot */}
           <div style={{ marginTop: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
               Acierto por modelo (predicho vs. real){" "}
               {activePoints.length === 0
-                ? <span style={{ color: "#888", fontWeight: 400 }}>— elige un snapshot para comparar</span>
+                ? <span style={{ color: "#888", fontWeight: 400 }}>— selecciona un snapshot (o calcula en vivo) para comparar</span>
                 : evalCount === 0
                 ? <span style={{ color: "#b8860b", fontWeight: 400 }}>
                     — {isLive ? "vista en vivo: las fechas predichas son futuras, aún sin real que comparar" : "el precio real aún no alcanza las fechas predichas"}
@@ -323,8 +308,8 @@ export default function ModelValidationTab() {
           </div>
 
           <p style={{ fontSize: 11, color: "#999", marginTop: 12 }}>
-            ⓘ El desempeño se calcula automáticamente al elegir un ticker. Gráfica interactiva: rueda para zoom,
-            herramientas de dibujo (se guardan por ticker). Menor MAPE = modelo más preciso. No es recomendación de inversión.
+            ⓘ El MAPE se calcula al seleccionar un snapshot del desplegable. «↻ Calcular en vivo» genera una predicción nueva
+            (manual). Gráfica interactiva: rueda para zoom, herramientas de dibujo (se guardan por ticker). No es recomendación de inversión.
           </p>
         </>
       )}
