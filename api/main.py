@@ -1,23 +1,6 @@
 """
 main.py — API de ML (predicción, simulación, intradía, señales, técnico, MLP, validación, psicología)
 =====================================================================================================
-Endpoints:
-    GET  /health · /models · /models-mlp · /models-intraday
-    GET  /backtest · /dashboard
-    GET  /intraday · /signals · /signals-scan
-    GET  /forecast-sentiment · /technical
-    GET  /predict-mlp                              ← curva RED NEURONAL (MLP)
-    GET  /predict-intraday                         ← sesión intradía 15 min + Elliott
-    GET  /validate                                 ← predicho vs real (XGBoost y MLP)
-    GET  /psychology                               ← Índice de Psicología de Mercado (IPM)
-    GET  /price-cache                              ← precio real desde Supabase (sin Polygon)
-    GET  /quote                                    ← precio EN VIVO tipo Yahoo (Polygon snapshot)
-    GET  /intraday-snapshots · /intraday-scorecard ← desempeño intradía vs real + baseline
-    GET  /forecast-history
-    POST /predict · /simulate · /forecast · /backfill-actuals
-    POST /save-snapshot                            ← congela TODAS las curvas (Supabase)
-    POST /intraday-snapshot                        ← guarda una predicción intradía (Supabase)
-
 Deploy: uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
 """
 
@@ -49,7 +32,6 @@ from technical import technical_analysis        # noqa: E402
 from mlp import predict_curve_mlp               # noqa: E402  ← curva red neuronal
 from validate import validate_models           # noqa: E402  ← predicho vs real
 from psychology import psychology_analysis      # noqa: E402  ← Índice de Psicología (IPM)
-from intraday_ml import predict_session, fetch_today_bars  # noqa: E402  ← sesión intradía 15 min
 from intraday_ml import predict_session, fetch_today_bars, fetch_live_price  # noqa: E402
 from extended_ml import predict_curve_extended   # noqa: E402  ← modelo AH+PM
 import supabase_client as sb                     # noqa: E402
@@ -58,7 +40,7 @@ import intraday_store                            # noqa: E402  ← snapshots int
 
 
 ARTIFACT_DIR = Path(__file__).resolve().parent / "artifacts"
-app = FastAPI(title="Stock ML API", version="2.6.0")
+app = FastAPI(title="Stock ML API", version="2.7.0")
 
 ALLOWED = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(CORSMiddleware, allow_origins=ALLOWED, allow_credentials=True,
@@ -160,8 +142,7 @@ def predict_curve(ticker: str, horizon: int) -> dict:
 # --------------------------------------------------------------------------- #
 @app.get("/price-cache")
 def price_cache(ticker: str, days: int = 220):
-    """Precio real diario leído SOLO de la caché Supabase (sin Polygon).
-    Para mostrar la línea de precio real al elegir ticker, sin gastar cuota."""
+    """Precio real diario leído SOLO de la caché Supabase (sin Polygon)."""
     if not price_store.enabled():
         raise HTTPException(503, "Supabase no está configurado en el servidor.")
     df = price_store.read_prices(ticker, years=max(1, days // 200 + 1))
@@ -180,8 +161,7 @@ def price_cache(ticker: str, days: int = 220):
 
 @app.get("/quote")
 def quote(ticker: str):
-    """Precio EN VIVO tipo Yahoo: último precio, cambio del día ($ y %), OHLC del día.
-    Usa el snapshot de Polygon (plan Starter, ~15 min de retraso)."""
+    """Precio EN VIVO tipo Yahoo (snapshot de Polygon, ~15 min de retraso)."""
     key = os.getenv("POLYGON_API_KEY")
     if not key:
         raise HTTPException(400, "Falta POLYGON_API_KEY")
@@ -215,7 +195,7 @@ def health():
 @app.get("/models")
 def list_models():
     return {"available": sorted(p.stem.replace("xgb_", "") for p in ARTIFACT_DIR.glob("xgb_*.joblib")
-                                if not p.stem.startswith("xgb_intraday_"))}
+                                if not p.stem.startswith("xgb_intraday_") and not p.stem.startswith("xgb_ext_"))}
 
 
 @app.get("/models-mlp")
@@ -229,6 +209,13 @@ def list_models_intraday():
     """Tickers que tienen modelo INTRADÍA (15 min) entrenado."""
     return {"available": sorted(p.stem.replace("xgb_intraday_", "")
                                 for p in ARTIFACT_DIR.glob("xgb_intraday_*.joblib"))}
+
+
+@app.get("/models-extended")
+def list_models_extended():
+    """Tickers con modelo EXTENDIDO (RTH+AH+PM) entrenado."""
+    return {"available": sorted(p.stem.replace("xgb_ext_", "")
+                                for p in ARTIFACT_DIR.glob("xgb_ext_*.joblib"))}
 
 
 @app.get("/backtest")
@@ -246,7 +233,8 @@ def dashboard():
     for meta_path in sorted(ARTIFACT_DIR.glob("meta_*.json")):
         if (meta_path.stem.startswith("meta_mlp_")
                 or meta_path.stem.startswith("meta_psych_")
-                or meta_path.stem.startswith("meta_intraday_")):
+                or meta_path.stem.startswith("meta_intraday_")
+                or meta_path.stem.startswith("meta_ext_")):
             continue
         t = meta_path.stem.replace("meta_", "")
         with open(meta_path) as f:
@@ -325,10 +313,21 @@ def predict_mlp(ticker: str, horizon: int = 21):
 
 @app.get("/predict-intraday")
 def predict_intraday(ticker: str):
-    """Curva recursiva intradía de 15 min del resto de la sesión (con clamp).
-    Devuelve real + predicho + full + Elliott (real y sesión completa)."""
+    """Curva recursiva intradía de 15 min del resto de la sesión (con clamp)."""
     try:
         return predict_session(ticker)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/predict-extended")
+def predict_extended(ticker: str, horizon: int = 30):
+    """Curva del modelo XGBoost EXTENDIDO (after-hours + premarket).
+    Independiente del /predict original; para comparar en el ensamble."""
+    try:
+        return predict_curve_extended(ticker, horizon)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e))
     except Exception as e:
@@ -348,8 +347,7 @@ def validate(ticker: str, days: int = 60):
 
 @app.get("/psychology")
 def psychology(ticker: str, horizon: int = 21, sentiment: float = 0.0):
-    """Índice de Psicología de Mercado (IPM): oscilador + curva contrarian
-    directa (Opción A) + curva aprendida ML (Opción B, si hay modelo)."""
+    """Índice de Psicología de Mercado (IPM)."""
     try:
         return psychology_analysis(ticker, horizon, sentiment_score=sentiment)
     except FileNotFoundError as e:
@@ -398,6 +396,8 @@ def intraday_scorecard(ticker: str, session_date: str = ""):
         real_bars = []
     score = intraday_store.score_snapshots(snaps, real_bars)
     return {"ticker": ticker.upper(), "real_bars": len(real_bars), **score}
+
+
 @app.get("/intraday-sessions")
 def list_intraday_sessions(ticker: str):
     """Sesiones (fechas) que tienen snapshots guardados para el ticker."""
@@ -405,11 +405,12 @@ def list_intraday_sessions(ticker: str):
         raise HTTPException(503, "Supabase no está configurado.")
     return {"ticker": ticker.upper(),
             "sessions": intraday_store.list_sessions(ticker)}
-    
+
+
 @app.get("/intraday-bars")
 def intraday_bars(ticker: str, session_date: str):
     """Velas de 15 min (OHLC) de una fecha concreta, para ver sesiones pasadas."""
-    from intraday_ml import fetch_bars_for_date   # o impórtalo arriba
+    from intraday_ml import fetch_bars_for_date
     try:
         df = fetch_bars_for_date(ticker, session_date)
     except Exception as e:
@@ -419,30 +420,16 @@ def intraday_bars(ticker: str, session_date: str):
              "low": round(float(r["low"]), 4), "close": round(float(r["close"]), 4),
              "volume": int(r["volume"])} for _, r in df.iterrows()]
     return {"ticker": ticker.upper(), "session_date": session_date, "bars": bars}
-    
+
+
 @app.get("/intraday-live")
 def intraday_live(ticker: str):
-        """Último precio de 1 min (para el número en vivo y la señal móvil)."""
-        try:
-            return {"ticker": ticker.upper(), **fetch_live_price(ticker)}
-        except Exception as e:
-            raise HTTPException(400, str(e))
-@app.get("/predict-extended")
-def predict_extended(ticker: str, horizon: int = 30):
-        """Curva del modelo XGBoost EXTENDIDO (after-hours + premarket).
-        Independiente del /predict original; para comparar en el ensamble."""
-        try:
-            return predict_curve_extended(ticker, horizon)
-        except FileNotFoundError as e:
-            raise HTTPException(404, str(e))
-        except Exception as e:
-            raise HTTPException(400, str(e))
+    """Último precio de 1 min (para el número en vivo y la señal móvil)."""
+    try:
+        return {"ticker": ticker.upper(), **fetch_live_price(ticker)}
+    except Exception as e:
+        raise HTTPException(400, str(e))
 
-@app.get("/models-extended")
-def list_models_extended():
-        """Tickers con modelo EXTENDIDO (RTH+AH+PM) entrenado."""
-        return {"available": sorted(p.stem.replace("xgb_ext_", "")
-                                    for p in ARTIFACT_DIR.glob("xgb_ext_*.joblib"))}
 
 @app.post("/predict")
 def predict(req: PredictRequest):
@@ -475,8 +462,8 @@ def forecast(req: ForecastRequest):
 
 @app.post("/save-snapshot")
 def save_snapshot(req: SnapshotRequest):
-    """Congela un snapshot con TODAS las curvas (XGBoost, MLP, Sentimiento,
-    Psicología A/B, Monte Carlo) y lo guarda en Supabase para validar después."""
+    """Congela un snapshot con TODAS las curvas (XGBoost, Extendido AH+PM, MLP,
+    Sentimiento, Psicología A/B, Monte Carlo) y lo guarda en Supabase."""
     if not sb.enabled():
         raise HTTPException(503, "Supabase no está configurado en el servidor.")
     ticker = req.ticker.upper()
@@ -504,16 +491,21 @@ def save_snapshot(req: SnapshotRequest):
         psyB = (psy.get("learned") or {}).get("curve", []) if psy.get("learned") else []
     except Exception:
         psyA, psyB = [], []
+    try:
+        ext = predict_curve_extended(ticker, h).get("prediction", [])
+    except Exception:
+        ext = []
 
     def bydate(lst):
         return {p["date"]: p["close"] for p in (lst or [])}
-    m_mlp, m_ms, m_so, m_a, m_b = bydate(mlp), bydate(mlsent), bydate(sentonly), bydate(psyA), bydate(psyB)
+    m_mlp, m_ms, m_so, m_a, m_b, m_ext = (bydate(mlp), bydate(mlsent), bydate(sentonly),
+                                          bydate(psyA), bydate(psyB), bydate(ext))
 
     points = []
     for i, p in enumerate(pred["prediction"]):
         d = p["date"]
         points.append({
-            "target_date": d, "xgb": p["close"],
+            "target_date": d, "xgb": p["close"], "ext": m_ext.get(d),
             "mlp": m_mlp.get(d), "ml_sentiment": m_ms.get(d),
             "sentiment_only": m_so.get(d), "psy_a": m_a.get(d), "psy_b": m_b.get(d),
             "mc_median": sim["median"][i], "mc_p5": sim["p5"][i],
