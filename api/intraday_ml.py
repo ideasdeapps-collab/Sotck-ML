@@ -84,7 +84,7 @@ def fetch_today_bars(ticker: str) -> pd.DataFrame:
     url = (f"https://api.polygon.io/v2/aggs/ticker/{ticker.upper()}/range/15/minute/"
            f"{start.isoformat()}/{end.isoformat()}"
            f"?adjusted=true&sort=asc&limit=50000&apiKey={POLYGON_API_KEY}")
-    res = get_json(url, ttl=TTL_INTRADAY).get("results", [])
+    res = get_json(url, ttl=60).get("results", []) # ← 60s, no 900
     if not res:
         raise ValueError(f"Polygon no devolvió barras intradía para {ticker}.")
     df = pd.DataFrame(res).rename(columns={"o": "open", "h": "high", "l": "low",
