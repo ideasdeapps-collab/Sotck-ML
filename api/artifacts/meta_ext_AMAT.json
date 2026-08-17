@@ -1,11 +1,11 @@
 {
   "ticker": "AMAT",
   "model": "XGBoost-extended (RTH+AH+PM)",
-  "trained_at": "2026-08-14T15:02:00.412877Z",
+  "trained_at": "2026-08-17T12:23:40.036416Z",
   "last_close": 536.47,
   "last_date": "2026-08-13",
-  "mu_daily": 0.0022890860126382057,
-  "sigma_daily": 0.033495473416942596,
+  "mu_daily": 0.002184198306239021,
+  "sigma_daily": 0.033517942777669035,
   "feature_cols": [
     "sma_ratio_5",
     "sma_ratio_10",
@@ -24,18 +24,18 @@
     "ah_pm_align",
     "ext_range"
   ],
-  "ext_importance": 0.4463,
+  "ext_importance": 0.4603,
   "metrics": {
-    "mae": 0.03726571716028046,
-    "r2": -0.05998846399966751,
-    "directional_accuracy": 0.4742268041237113
+    "mae": 0.03778171119794447,
+    "r2": -0.052011693908904144,
+    "directional_accuracy": 0.46875
   },
   "last_ext_features": {
     "ah_return": 0.00835182878511877,
     "ah_volume_ratio": 0.1605062943102349,
     "pm_return": -0.01301599643057388,
     "pm_volume_ratio": 0.03509139748725078,
-    "overnight_gap": 0.0009479537670951317,
+    "overnight_gap": 0.0009479537670951316,
     "ah_pm_align": -1.0,
     "ext_range": 0.011891517262762375
   }
