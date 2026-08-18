@@ -45,7 +45,7 @@ app = FastAPI(title="Stock ML API", version="2.7.0")
 ALLOWED = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(CORSMiddleware, allow_origins=ALLOWED, allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
-```python
+
 # --- AI Live Trading: montaje de routers ---
 from ai_routes import router as ai_router
 from ai_optimizer_routes import router as ai_optimizer_router
@@ -58,7 +58,7 @@ app.include_router(ai_optimizer_router)
 app.include_router(strategy_router)
 app.include_router(ai_backtest_router)
 app.include_router(trading_router)
-```
+
 
 _MODEL_CACHE: dict[str, tuple] = {}
 WATCHLIST = ["SNDK", "SMH", "AMAT", "TSM", "QQQ", "NVDA", "MU", "XLI", "AVGO",
