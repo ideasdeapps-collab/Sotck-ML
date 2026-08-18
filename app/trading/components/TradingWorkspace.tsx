@@ -4,6 +4,8 @@ import { useState } from "react";
 import AIRecommendation from "./AIRecommendation";
 import LiveChart from "./LiveChart";
 import IndicatorPanel from "./IndicatorPanel";
+import MetricsPanel from "./MetricsPanel";
+import TradeHistory from "./TradeHistory";
 
 export default function TradingWorkspace() {
   const [ticker, setTicker] = useState("NVDA");
@@ -77,7 +79,21 @@ export default function TradingWorkspace() {
         <p className="mt-3 text-sm">{status}</p>
       </section>
 
-      {simulation && <AIRecommendation data={simulation} />}
+      {simulation && (
+        <>
+          <section className="lg:col-span-4">
+            <AIRecommendation data={simulation} />
+          </section>
+
+          <section>
+            <MetricsPanel metrics={simulation.metrics} />
+          </section>
+
+          <section>
+            <TradeHistory trades={simulation.trades} />
+          </section>
+        </>
+      )}
     </main>
   );
 }
