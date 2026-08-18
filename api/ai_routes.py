@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from polygon_market import fetch_minute_candles
 from market_features import generate_features
+from strategy_engine import recommend_strategy
 from ai_simulation import run_ai_simulation
 
 router = APIRouter(prefix="/ai", tags=["AI Trading"])
@@ -14,7 +15,7 @@ class AISimulationRequest(BaseModel):
     ticker: str = Field(..., examples=["NVDA"])
     capital: float = Field(10000, gt=0)
     days: int = Field(30, ge=1, le=365)
-    strategy: str = "AI_HYBRID"
+    strategy: str = "AUTO"
 
 
 @router.post("/simulate-trading-ai")
@@ -26,6 +27,13 @@ def simulate_trading_ai(request: AISimulationRequest):
         )
 
         features = generate_features(candles)
+        recommendation = recommend_strategy(features)
+
+        selected_strategy = (
+            recommendation["recommended_strategy"]
+            if request.strategy == "AUTO"
+            else request.strategy
+        )
 
         result = run_ai_simulation(
             ticker=request.ticker,
@@ -37,7 +45,8 @@ def simulate_trading_ai(request: AISimulationRequest):
 
         return {
             **result,
-            "strategy": request.strategy,
+            "strategy": selected_strategy,
+            "strategy_recommendation": recommendation,
             "features": features,
             "candles_processed": len(candles),
         }
