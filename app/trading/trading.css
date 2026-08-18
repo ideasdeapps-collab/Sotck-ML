@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  .trading-root {
+    color-scheme: dark;
+    min-height: 100vh;
+  }
+}
