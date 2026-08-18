@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
   Bar,
   BarChart,
+  ReferenceDot,
 } from "recharts";
 
 type Candle = {
@@ -19,7 +20,19 @@ type Candle = {
   volume?: number;
 };
 
-export default function LiveChart({ candles = [] }: { candles?: Candle[] }) {
+type Signal = {
+  action: "BUY" | "SELL";
+  time: string;
+  price: number;
+};
+
+export default function LiveChart({
+  candles = [],
+  signals = [],
+}: {
+  candles?: Candle[];
+  signals?: Signal[];
+}) {
   return (
     <div className="border rounded-xl p-4 bg-zinc-950 space-y-4">
       <h3 className="font-semibold">Intraday 1m Chart</h3>
@@ -38,6 +51,14 @@ export default function LiveChart({ candles = [] }: { candles?: Candle[] }) {
               <Line dataKey="close" dot={false} />
               <Line dataKey="ema20" dot={false} />
               <Line dataKey="ema50" dot={false} />
+              {signals.map((signal, index) => (
+                <ReferenceDot
+                  key={index}
+                  x={signal.time}
+                  y={signal.price}
+                  label={signal.action}
+                />
+              ))}
             </LineChart>
           </ResponsiveContainer>
 
