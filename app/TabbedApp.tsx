@@ -11,7 +11,7 @@ import BacktestChart from "./BacktestChart";
 import Dashboard from "./Dashboard";
 import IntradaySessionTab from "./IntradaySessionTab";
 import LiveTradingTab from "./LiveTradingTab";
-
+import TradingWorkspace from "./trading/components/TradingWorkspace";
 
 const TABS = [
   { id: "forecast", label: "📈 Predicción", node: <StockForecastChart /> },
@@ -23,6 +23,7 @@ const TABS = [
   { id: "intraday-ml", label: "🕐 Sesión ML", node: <IntradaySessionTab /> },
   { id: "backtest", label: "🎯 Backtest", node: <BacktestChart /> },
   { id: "live", label: "🤖 AI Live Trading", node: <LiveTradingTab /> },
+  { id: "trading-lab", label: "🧪 Trading Lab", node: <TradingWorkspace /> },
   { id: "dashboard", label: "📊 Panel", node: <Dashboard /> },
 ];
 
