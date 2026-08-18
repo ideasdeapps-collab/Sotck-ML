@@ -20,6 +20,7 @@ export default function TradingWorkspace() {
 
     const data = await response.json();
     setMarketData(data);
+    return data;
   }
 
   async function runSimulation() {
@@ -42,6 +43,8 @@ export default function TradingWorkspace() {
     }
   }
 
+  const signals = simulation?.signals || simulation?.signal ? [simulation.signal] : [];
+
   return (
     <main className="grid grid-cols-1 lg:grid-cols-4 gap-4 p-4">
       <section className="border rounded p-4">
@@ -54,7 +57,7 @@ export default function TradingWorkspace() {
       </section>
 
       <section className="lg:col-span-2">
-        <LiveChart candles={marketData?.candles} />
+        <LiveChart candles={marketData?.candles} signals={signals} />
       </section>
 
       <section>
