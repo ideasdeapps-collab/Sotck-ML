@@ -2,25 +2,37 @@
 
 import { useState } from "react";
 import AIRecommendation from "./AIRecommendation";
+import LiveChart from "./LiveChart";
+import IndicatorPanel from "./IndicatorPanel";
 
 export default function TradingWorkspace() {
   const [ticker, setTicker] = useState("NVDA");
   const [status, setStatus] = useState("Ready");
   const [simulation, setSimulation] = useState<any>(null);
+  const [marketData, setMarketData] = useState<any>(null);
+
+  async function loadMarketData() {
+    const response = await fetch("/api/market-data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ticker }),
+    });
+
+    const data = await response.json();
+    setMarketData(data);
+  }
 
   async function runSimulation() {
     setStatus("Running AI simulation...");
 
     try {
+      await loadMarketData();
+
       const response = await fetch("/api/simulate-trading-ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticker }),
       });
-
-      if (!response.ok) {
-        throw new Error("Simulation endpoint unavailable");
-      }
 
       const result = await response.json();
       setSimulation(result);
@@ -41,33 +53,28 @@ export default function TradingWorkspace() {
         />
       </section>
 
-      <section className="lg:col-span-2 border rounded p-4">
-        <h2 className="font-semibold">Chart / Indicators</h2>
-        <div className="mt-4 h-48 flex items-center justify-center">
-          Market Chart Engine
-        </div>
+      <section className="lg:col-span-2">
+        <LiveChart candles={marketData?.candles} />
+      </section>
+
+      <section>
+        <IndicatorPanel
+          ema20={simulation?.features?.ema20}
+          ema50={simulation?.features?.ema50}
+          rsi={simulation?.features?.rsi}
+          volumeRatio={simulation?.features?.volumeRatio}
+        />
       </section>
 
       <section className="border rounded p-4">
         <h2 className="font-semibold">AI Strategy Agent</h2>
-        <button
-          className="border rounded px-3 py-2 mt-3"
-          onClick={runSimulation}
-        >
+        <button className="border rounded px-3 py-2 mt-3" onClick={runSimulation}>
           Simulate AI Trade
         </button>
         <p className="mt-3 text-sm">{status}</p>
       </section>
 
-      {simulation && (
-        <section className="lg:col-span-4">
-          <AIRecommendation data={simulation} />
-        </section>
-      )}
-
-      <section className="lg:col-span-4 border rounded p-4">
-        Trade Log / Performance Metrics
-      </section>
+      {simulation && <AIRecommendation data={simulation} />}
     </main>
   );
 }
