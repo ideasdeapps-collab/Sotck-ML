@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import AIRecommendation from "./AIRecommendation";
 
 export default function TradingWorkspace() {
   const [ticker, setTicker] = useState("NVDA");
   const [status, setStatus] = useState("Ready");
+  const [simulation, setSimulation] = useState<any>(null);
 
   async function runSimulation() {
     setStatus("Running AI simulation...");
@@ -20,6 +22,8 @@ export default function TradingWorkspace() {
         throw new Error("Simulation endpoint unavailable");
       }
 
+      const result = await response.json();
+      setSimulation(result);
       setStatus("Simulation completed");
     } catch {
       setStatus("Waiting for AI engine connection");
@@ -54,6 +58,12 @@ export default function TradingWorkspace() {
         </button>
         <p className="mt-3 text-sm">{status}</p>
       </section>
+
+      {simulation && (
+        <section className="lg:col-span-4">
+          <AIRecommendation data={simulation} />
+        </section>
+      )}
 
       <section className="lg:col-span-4 border rounded p-4">
         Trade Log / Performance Metrics
