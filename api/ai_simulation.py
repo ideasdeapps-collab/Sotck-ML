@@ -1,5 +1,4 @@
 """AI hybrid trading simulation engine."""
-
 from typing import Dict, Any, List
 
 from ai_trading_agent import generate_signal
@@ -19,14 +18,11 @@ def run_ai_simulation(
     historical_results: List[Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
     """Runs optimized candle-by-candle AI paper trading simulation."""
-
     optimization = optimize_parameters(
         strategy=strategy,
         historical_results=historical_results or [],
     )
-
     params = optimization["parameters"]
-
     equity = capital
     equity_curve = [capital]
     trades = []
@@ -35,21 +31,17 @@ def run_ai_simulation(
     for candle in candles:
         current_price = float(candle["close"])
         signal = generate_signal(dict(features))
-
         if position is None and signal["action"] == "BUY":
             shares = (equity * params["position_size"]) / current_price
             execution = apply_execution_costs(current_price, shares)
-
             stop = current_price * (1 - params["stop_loss"])
             target = current_price * (1 + params["take_profit"])
-
             risk = validate_trade(
                 entry_price=current_price,
                 stop_loss=stop,
                 take_profit=target,
                 capital=equity,
             )
-
             if risk["approved"]:
                 position = {
                     "entry": current_price,
@@ -58,14 +50,12 @@ def run_ai_simulation(
                     "stop": stop,
                     "target": target,
                 }
-
         elif position:
             if current_price <= position["stop"] or current_price >= position["target"]:
                 gross_pnl = (current_price - position["entry"]) * position["shares"]
                 exit_cost = apply_execution_costs(current_price, position["shares"])["total_cost"]
                 pnl = gross_pnl - position["entry_cost"] - exit_cost
                 equity += pnl
-
                 trades.append({
                     "entry": position["entry"],
                     "exit": current_price,
@@ -73,11 +63,9 @@ def run_ai_simulation(
                     "pnl": round(pnl, 2),
                 })
                 position = None
-
         equity_curve.append(round(equity, 2))
 
     metrics = calculate_metrics(equity_curve, trades)
-
     return {
         "ticker": ticker.upper(),
         "strategy": strategy,
@@ -87,6 +75,7 @@ def run_ai_simulation(
         "final_equity": round(equity, 2),
         "days": days,
         **metrics,
+        "equity_curve": equity_curve,   # ← NUEVO: para graficar la curva de equity
         "signal": generate_signal(features),
         "trades": trades,
     }
