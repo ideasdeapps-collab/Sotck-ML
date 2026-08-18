@@ -10,7 +10,8 @@ import ModelValidationTab from "./ModelValidationTab";
 import BacktestChart from "./BacktestChart";
 import Dashboard from "./Dashboard";
 import IntradaySessionTab from "./IntradaySessionTab";
-import LiveTradingTab from "../LiveTradingTab";
+import LiveTradingTab from "./LiveTradingTab";
+
 
 const TABS = [
   { id: "forecast", label: "📈 Predicción", node: <StockForecastChart /> },
