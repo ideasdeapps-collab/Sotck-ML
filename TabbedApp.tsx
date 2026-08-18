@@ -1,29 +1,17 @@
 "use client";
 
-/**
- * TabbedApp.tsx — Contenedor de pestañas
- * ======================================
- * Une las vistas de la app en una sola página con pestañas:
- *   1) Predicción   -> StockForecastChart (histórico + XGBoost + Monte Carlo)
- *   2) Intradía     -> IntradayChart (velas + chartismo + price action)
- *   3) Señales      -> SignalsTab (sesgo diario × estructura intradía)
- *   4) Panel        -> Dashboard (tabla de los 18 tickers)
- *
- * Uso en Next.js (app router):
- *   import TabbedApp from "@/components/TabbedApp";
- *   export default function Page() { return <TabbedApp />; }
- */
-
 import { useState } from "react";
 import StockForecastChart from "./StockForecastChart";
 import IntradayChart from "./IntradayChart";
 import SignalsTab from "./SignalsTab";
 import Dashboard from "./Dashboard";
+import LiveTradingTab from "./LiveTradingTab";
 
 const TABS = [
   { id: "forecast", label: "📈 Predicción", node: <StockForecastChart /> },
   { id: "intraday", label: "📉 Intradía", node: <IntradayChart /> },
   { id: "signals", label: "🔔 Señales combinadas", node: <SignalsTab /> },
+  { id: "live", label: "🤖 AI Live Trading", node: <LiveTradingTab /> },
   { id: "dashboard", label: "📊 Panel", node: <Dashboard /> },
 ];
 
@@ -38,12 +26,12 @@ export default function TabbedApp() {
             key={t.id}
             onClick={() => setActive(t.id)}
             style={{
-              padding: "10px 18px", border: "none", cursor: "pointer",
-              background: "transparent", fontSize: 14,
+              padding: "10px 18px",
+              border: "none",
+              cursor: "pointer",
+              background: "transparent",
               fontWeight: active === t.id ? 700 : 400,
-              color: active === t.id ? "#111" : "#888",
               borderBottom: active === t.id ? "2px solid #111" : "2px solid transparent",
-              marginBottom: -2,
             }}
           >
             {t.label}
