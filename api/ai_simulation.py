@@ -6,6 +6,7 @@ from ai_trading_agent import generate_signal
 from risk_manager import validate_trade
 from performance_metrics import calculate_metrics
 from trading_costs import apply_execution_costs
+from ai_optimizer import optimize_parameters
 
 
 def run_ai_simulation(
@@ -14,8 +15,17 @@ def run_ai_simulation(
     days: int,
     candles: List[Dict[str, Any]],
     features: Dict[str, Any],
+    strategy: str = "AI_HYBRID",
+    historical_results: List[Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
-    """Runs candle-by-candle AI paper trading simulation."""
+    """Runs optimized candle-by-candle AI paper trading simulation."""
+
+    optimization = optimize_parameters(
+        strategy=strategy,
+        historical_results=historical_results or [],
+    )
+
+    params = optimization["parameters"]
 
     equity = capital
     equity_curve = [capital]
@@ -24,15 +34,14 @@ def run_ai_simulation(
 
     for candle in candles:
         current_price = float(candle["close"])
-
         signal = generate_signal(dict(features))
 
         if position is None and signal["action"] == "BUY":
-            shares = equity / current_price
+            shares = (equity * params["position_size"]) / current_price
             execution = apply_execution_costs(current_price, shares)
 
-            stop = current_price * 0.99
-            target = current_price * 1.015
+            stop = current_price * (1 - params["stop_loss"])
+            target = current_price * (1 + params["take_profit"])
 
             risk = validate_trade(
                 entry_price=current_price,
@@ -52,27 +61,17 @@ def run_ai_simulation(
 
         elif position:
             if current_price <= position["stop"] or current_price >= position["target"]:
-                gross_pnl = (
-                    (current_price - position["entry"])
-                    * position["shares"]
-                )
-
-                exit_cost = apply_execution_costs(
-                    current_price,
-                    position["shares"],
-                )["total_cost"]
-
+                gross_pnl = (current_price - position["entry"]) * position["shares"]
+                exit_cost = apply_execution_costs(current_price, position["shares"])["total_cost"]
                 pnl = gross_pnl - position["entry_cost"] - exit_cost
                 equity += pnl
 
                 trades.append({
                     "entry": position["entry"],
                     "exit": current_price,
-                    "shares": round(position["shares"], 4),
                     "result": "WIN" if pnl > 0 else "LOSS",
                     "pnl": round(pnl, 2),
                 })
-
                 position = None
 
         equity_curve.append(round(equity, 2))
@@ -81,7 +80,9 @@ def run_ai_simulation(
 
     return {
         "ticker": ticker.upper(),
-        "strategy": "AI_HYBRID",
+        "strategy": strategy,
+        "optimized_parameters": params,
+        "optimizer_confidence": optimization["confidence"],
         "initial_capital": capital,
         "final_equity": round(equity, 2),
         "days": days,
