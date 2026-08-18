@@ -5,6 +5,7 @@ from typing import Dict, Any, List
 from ai_trading_agent import generate_signal
 from risk_manager import validate_trade
 from performance_metrics import calculate_metrics
+from trading_costs import apply_execution_costs
 
 
 def run_ai_simulation(
@@ -24,10 +25,12 @@ def run_ai_simulation(
     for candle in candles:
         current_price = float(candle["close"])
 
-        signal_features = dict(features)
-        signal = generate_signal(signal_features)
+        signal = generate_signal(dict(features))
 
         if position is None and signal["action"] == "BUY":
+            shares = equity / current_price
+            execution = apply_execution_costs(current_price, shares)
+
             stop = current_price * 0.99
             target = current_price * 1.015
 
@@ -41,20 +44,33 @@ def run_ai_simulation(
             if risk["approved"]:
                 position = {
                     "entry": current_price,
+                    "shares": shares,
+                    "entry_cost": execution["total_cost"],
                     "stop": stop,
                     "target": target,
                 }
 
         elif position:
             if current_price <= position["stop"] or current_price >= position["target"]:
-                pnl = (current_price - position["entry"]) / position["entry"]
-                equity *= (1 + pnl)
+                gross_pnl = (
+                    (current_price - position["entry"])
+                    * position["shares"]
+                )
+
+                exit_cost = apply_execution_costs(
+                    current_price,
+                    position["shares"],
+                )["total_cost"]
+
+                pnl = gross_pnl - position["entry_cost"] - exit_cost
+                equity += pnl
 
                 trades.append({
                     "entry": position["entry"],
                     "exit": current_price,
+                    "shares": round(position["shares"], 4),
                     "result": "WIN" if pnl > 0 else "LOSS",
-                    "pnl_pct": round(pnl * 100, 2),
+                    "pnl": round(pnl, 2),
                 })
 
                 position = None
