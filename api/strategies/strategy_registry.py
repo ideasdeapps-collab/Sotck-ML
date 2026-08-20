@@ -1,29 +1,22 @@
-from .momentum_breakout import MomentumBreakout
-from .ema_pullback import EMAPullback
-from .vwap_reclaim import VWAPReclaim
-from .mean_reversion import MeanReversion
-from .rsi_divergence import RSIDivergence
-from .macd_trend import MACDTrend
-from .bollinger_squeeze import BollingerSqueeze
-from .opening_range_breakout import OpeningRangeBreakout
-from .volume_breakout import VolumeBreakout
-from .trend_following import TrendFollowing
-from .liquidity_sweep import LiquiditySweep
+class BaseStrategy:
+    name = "Base"
+    def regime_score(self, regime): return 50
+    def pattern_score(self, patterns): return 50
+    def risk_score(self, risk): return 50
 
-STRATEGIES = {
-    "Momentum Breakout": MomentumBreakout(),
-    "EMA Pullback": EMAPullback(),
-    "VWAP Reclaim": VWAPReclaim(),
-    "Mean Reversion": MeanReversion(),
-    "RSI Divergence": RSIDivergence(),
-    "MACD Trend": MACDTrend(),
-    "Bollinger Squeeze": BollingerSqueeze(),
-    "Opening Range Breakout": OpeningRangeBreakout(),
-    "Volume Breakout": VolumeBreakout(),
-    "Trend Following": TrendFollowing(),
-    "Liquidity Sweep": LiquiditySweep(),
-}
+class MomentumBreakout(BaseStrategy):
+    name="Momentum Breakout"
+    def regime_score(self, regime): return 95 if regime=="TRENDING" else 60
+    def pattern_score(self, patterns): return 95 if patterns.get("liquidity")=="SWEEP_UP" and patterns.get("fvg")=="BULLISH" else 70
 
+class EMAPullback(BaseStrategy):
+    name="EMA Pullback"
+    def regime_score(self, regime): return 85 if regime=="TRENDING" else 60
 
-def get_strategy(name):
-    return STRATEGIES.get(name)
+class VWAPReclaim(BaseStrategy):
+    name="VWAP Reclaim"
+    def pattern_score(self, patterns): return 80 if patterns.get("fvg")=="BULLISH" else 65
+
+class MeanReversion(BaseStrategy):
+    name="Mean Reversion"
+    def regime_score(self, regime): return 85 if regime=="RANGING" else 50
