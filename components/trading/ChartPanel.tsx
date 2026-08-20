@@ -2,50 +2,42 @@
 
 import { useEffect, useRef } from 'react';
 import { createChart, CandlestickSeries, LineSeries } from 'lightweight-charts';
+import { useTradingStore } from '@/lib/trading/useTradingStore';
 
 export default function ChartPanel() {
   const chartRef = useRef<HTMLDivElement | null>(null);
+  const { ticker, timeframe } = useTradingStore();
 
   useEffect(() => {
     if (!chartRef.current) return;
 
     const chart = createChart(chartRef.current, {
-      layout: {
-        background: { color: '#0b0f14' },
-        textColor: '#9ca3af',
-      },
-      grid: {
-        vertLines: { color: '#18202b' },
-        horzLines: { color: '#18202b' },
-      },
-      width: chartRef.current.clientWidth,
       height: 520,
+      layout: { background: { color: '#0b0f14' } }
     });
 
     const candles = chart.addSeries(CandlestickSeries);
     candles.setData([
       { time: '2026-08-19', open: 178, high: 181, low: 176, close: 180 },
-      { time: '2026-08-20', open: 180, high: 184, low: 179, close: 183 },
-      { time: '2026-08-21', open: 183, high: 186, low: 181, close: 185 },
+      { time: '2026-08-20', open: 180, high: 184, low: 179, close: 183 }
     ]);
 
-    const ema = chart.addSeries(LineSeries, { lineWidth: 2 });
+    const ema = chart.addSeries(LineSeries);
     ema.setData([
       { time: '2026-08-19', value: 179 },
-      { time: '2026-08-20', value: 181 },
-      { time: '2026-08-21', value: 183 },
+      { time: '2026-08-20', value: 181 }
     ]);
 
     chart.timeScale().fitContent();
-
     return () => chart.remove();
-  }, []);
+  }, [ticker, timeframe]);
 
   return (
     <section className="chart-panel">
       <header>
-        <h3>TradingView Live Terminal</h3>
-        <span>EMA20 · VWAP · Bollinger · AI BUY/SELL Signals</span>
+        <h3>{ticker} · {timeframe}</h3>
+        <p>☑ EMA20 ☑ EMA50 ☑ VWAP ☑ Bollinger</p>
+        <p>AI BUY ▲ SELL ▼</p>
       </header>
       <div ref={chartRef} />
     </section>
