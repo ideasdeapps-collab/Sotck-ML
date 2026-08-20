@@ -1,17 +1,125 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Trading Lab — standalone stylesheet (this project does not use Tailwind). */
+
+.trading-root {
+  color-scheme: dark;
+  min-height: 100vh;
+}
 
 .trading-terminal {
   display: flex;
+  align-items: flex-start;
   min-height: 100vh;
+  background: #05070a;
+  color: #e5e7eb;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.trading-sidebar {
+  width: 240px;
+  flex: 0 0 240px;
+  padding: 16px;
+  border-right: 1px solid #1f2937;
+  background: #080b10;
+  min-height: 100vh;
+}
+
+.trading-sidebar h2 {
+  font-size: 16px;
+  margin: 0 0 12px;
+}
+
+.trading-sidebar h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  margin: 18px 0 8px;
+}
+
+.trading-sidebar input[type="text"],
+.trading-sidebar input:not([type]) {
+  width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #1f2937;
   background: #05070a;
   color: #e5e7eb;
 }
 
+.trading-sidebar__watchlist {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.trading-sidebar__watchlist button,
+.chart-panel__timeframes button {
+  border: 1px solid #1f2937;
+  background: #0b0f14;
+  color: #cbd5f5;
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.trading-sidebar__watchlist button.is-active,
+.chart-panel__timeframes button.is-active {
+  border-color: #22c55e;
+  color: #22c55e;
+}
+
+.trading-sidebar__modes label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.trading-sidebar__cta {
+  width: 100%;
+  margin-top: 16px;
+  padding: 10px;
+  border-radius: 8px;
+  border: none;
+  background: #22c55e;
+  color: #04120a;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.trading-sidebar__cta:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.trading-sidebar__error {
+  color: #f87171;
+  font-size: 12px;
+}
+
+.trading-sidebar__signal {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.trading-sidebar__signal h3 {
+  font-size: 20px;
+  margin: 0 0 6px;
+  color: #94a3b8;
+}
+
+.trading-sidebar__signal h3[data-signal="BUY"] { color: #22c55e; }
+.trading-sidebar__signal h3[data-signal="SELL"] { color: #ef4444; }
+
 .trading-main {
   flex: 1;
   padding: 16px;
+  min-width: 0;
 }
 
 .chart-panel,
@@ -22,6 +130,38 @@
   padding: 14px;
 }
 
+.chart-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.chart-panel__header h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.chart-panel__timeframes {
+  display: flex;
+  gap: 6px;
+}
+
+.chart-panel__meta,
+.chart-panel__error {
+  font-size: 11px;
+  margin: 6px 0 10px;
+}
+
+.chart-panel__meta { color: #64748b; }
+.chart-panel__error { color: #f87171; }
+
+.chart-panel__canvas {
+  width: 100%;
+  height: 520px;
+}
+
 .trading-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -29,13 +169,153 @@
   margin-top: 12px;
 }
 
-@media (max-width: 1100px) {
-  .trading-grid {
-    grid-template-columns: 1fr;
-  }
+.trading-grid h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #e2e8f0;
 }
 
-.trading-root {
-  color-scheme: dark;
-  min-height: 100vh;
+.trading-grid p {
+  margin: 4px 0;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.strategy-row { margin-bottom: 10px; }
+.strategy-row progress { width: 100%; height: 6px; }
+.strategy-row__active { color: #22c55e !important; }
+
+.simulator__field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 8px 0;
+}
+
+.simulator__field input {
+  width: 80px;
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid #1f2937;
+  background: #05070a;
+  color: #e5e7eb;
+}
+
+.simulator__actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.simulator__actions button {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #1f2937;
+  background: #101722;
+  color: #e5e7eb;
+  cursor: pointer;
+}
+
+.simulator__actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+.simulator__message { color: #38bdf8 !important; font-size: 12px; }
+
+@media (max-width: 1100px) {
+  .trading-terminal { flex-direction: column; }
+  .trading-sidebar { width: 100%; flex: 1 1 auto; min-height: auto; border-right: none; border-bottom: 1px solid #1f2937; }
+  .trading-grid { grid-template-columns: 1fr; }
+}
+
+.chart-panel__warning {
+  font-size: 11px;
+  margin: 6px 0 10px;
+  color: #f59e0b;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.trading-sidebar__search {
+  display: flex;
+  gap: 6px;
+}
+
+.trading-sidebar__search input {
+  flex: 1;
+  min-width: 0;
+}
+
+.trading-sidebar__search button {
+  width: 34px;
+  border-radius: 8px;
+  border: 1px solid #1f2937;
+  background: #101722;
+  color: #22c55e;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.trading-sidebar__watchlist span {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.trading-sidebar__watchlist span.is-active {
+  border-color: #22c55e;
+}
+
+.trading-sidebar__watchlist span button {
+  border: none;
+  border-radius: 0;
+  background: #0b0f14;
+  flex: 1;
+  min-width: 0;
+}
+
+.trading-sidebar__watchlist span.is-active button {
+  color: #22c55e;
+}
+
+.trading-sidebar__remove {
+  flex: 0 0 20px !important;
+  color: #64748b !important;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 !important;
+}
+
+.trading-sidebar__remove:hover {
+  color: #ef4444 !important;
+}
+
+.trading-sidebar__capital {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: #05070a;
+  color: #94a3b8;
+}
+
+.trading-sidebar__capital input {
+  flex: 1;
+  min-width: 0;
+  border: none !important;
+  background: transparent !important;
+  color: #e5e7eb;
+  padding: 0 !important;
+  font-size: 14px;
+  outline: none;
+}
+
+.trading-sidebar__note {
+  color: #f59e0b;
+  font-size: 11px;
+  margin: 6px 0 0;
 }
