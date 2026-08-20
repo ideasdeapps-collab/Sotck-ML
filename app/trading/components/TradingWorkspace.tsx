@@ -6,6 +6,8 @@ import LiveChart from "./LiveChart";
 import IndicatorPanel from "./IndicatorPanel";
 import MetricsPanel from "./MetricsPanel";
 import TradeHistory from "./TradeHistory";
+import StrategyPanel from "./StrategyPanel";
+import PaperTradingPanel from "./PaperTradingPanel";
 
 export default function TradingWorkspace() {
   const [ticker, setTicker] = useState("NVDA");
@@ -48,48 +50,45 @@ export default function TradingWorkspace() {
   const signals = simulation?.signals || simulation?.signal ? [simulation.signal] : [];
 
   return (
-    <main className="grid grid-cols-1 lg:grid-cols-4 gap-4 p-4">
-      <section className="border rounded p-4">
-        <h2 className="font-semibold">Watchlist</h2>
-        <input
-          className="border rounded p-2 mt-3 w-full"
-          value={ticker}
-          onChange={(e) => setTicker(e.target.value.toUpperCase())}
-        />
-      </section>
+    <main className="grid grid-cols-12 gap-3 p-4 bg-zinc-950 text-white min-h-screen">
+      <aside className="col-span-12 lg:col-span-2">
+        <StrategyPanel />
+      </aside>
 
-      <section className="lg:col-span-2">
+      <section className="col-span-12 lg:col-span-7 space-y-3">
+        <div className="border rounded p-3 bg-zinc-900 flex gap-3">
+          <input
+            className="border rounded p-2 bg-black w-32"
+            value={ticker}
+            onChange={(e) => setTicker(e.target.value.toUpperCase())}
+          />
+          <button className="border rounded px-4" onClick={runSimulation}>
+            Run AI Trade
+          </button>
+          <span className="text-sm">{status}</span>
+        </div>
+
         <LiveChart candles={marketData?.candles} signals={signals} />
+
+        {simulation && <AIRecommendation data={simulation} />}
       </section>
 
-      <section>
+      <aside className="col-span-12 lg:col-span-3 space-y-3">
+        <PaperTradingPanel />
         <IndicatorPanel
           ema20={simulation?.features?.ema20}
           ema50={simulation?.features?.ema50}
           rsi={simulation?.features?.rsi}
           volumeRatio={simulation?.features?.volumeRatio}
         />
-      </section>
-
-      <section className="border rounded p-4">
-        <h2 className="font-semibold">AI Strategy Agent</h2>
-        <button className="border rounded px-3 py-2 mt-3" onClick={runSimulation}>
-          Simulate AI Trade
-        </button>
-        <p className="mt-3 text-sm">{status}</p>
-      </section>
+      </aside>
 
       {simulation && (
         <>
-          <section className="lg:col-span-4">
-            <AIRecommendation data={simulation} />
-          </section>
-
-          <section>
+          <section className="col-span-12 lg:col-span-4">
             <MetricsPanel metrics={simulation.metrics} />
           </section>
-
-          <section>
+          <section className="col-span-12 lg:col-span-8">
             <TradeHistory trades={simulation.trades} />
           </section>
         </>
