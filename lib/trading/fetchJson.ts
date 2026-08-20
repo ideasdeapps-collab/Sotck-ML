@@ -16,9 +16,13 @@ export async function fetchJson<T = any>(input: string, init?: RequestInit): Pro
       throw new Error('API blocked by Deployment Protection — open the preview while signed in to Vercel');
     }
 
+    if (response.status === 404) {
+      throw new Error(`API route not found (404): ${input} — it was not included in the deployment`);
+    }
+
     throw new Error(
       looksLikeHtml
-        ? `API returned HTML instead of JSON (HTTP ${response.status}) — the route probably crashed`
+        ? `API returned HTML instead of JSON (HTTP ${response.status}) — the route crashed`
         : `Unexpected response from ${input} (HTTP ${response.status})`
     );
   }

@@ -1,11 +1,17 @@
 # Evita que Vercel intente empaquetar la API de Python como función serverless.
 # El backend de ML se despliega en Render (ver render.yaml), NO en Vercel.
 # Vercel solo debe construir el frontend Next.js (que consume la API por HTTP).
+#
+# IMPORTANTE: la barra inicial es obligatoria. Estos patrones siguen la
+# semántica de .gitignore, así que "api/" (sin barra) coincide con CUALQUIER
+# directorio llamado api a cualquier profundidad — incluido app/api/, lo que
+# borraba todas las route handlers de Next.js del deploy y hacía que cada
+# /api/* respondiera 404.
 
-api/
-training/
-supabase/
+/api/
+/training/
+/supabase/
 **/*.py
 **/__pycache__/
 **/artifacts/
-requirements.txt
+/requirements.txt

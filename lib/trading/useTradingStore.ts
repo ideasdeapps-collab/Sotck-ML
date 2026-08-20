@@ -15,6 +15,7 @@ export type TradingState = {
   session: boolean;
   live: boolean;
   portfolioVersion: number;
+  dataError: string;
   status: string;
 };
 
@@ -31,6 +32,7 @@ let state: TradingState = {
   session: false,
   live: false,
   portfolioVersion: 0,
+  dataError: "",
   status: "Idle",
 };
 
@@ -74,6 +76,7 @@ export const actions = {
   addCandle: (candle: any) => patch({ candles: [...state.candles.slice(-500), candle] }),
   setSession: (session: boolean) => patch({ session }),
   setLive: (live: boolean) => patch({ live }),
+  setDataError: (dataError: string) => patch({ dataError }),
   bumpPortfolio: () => patch({ portfolioVersion: state.portfolioVersion + 1 }),
   setStatus: (status: string) => patch({ status }),
 };
