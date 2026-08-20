@@ -10,7 +10,7 @@ const BASE = [
 ];
 
 export default function StrategiesPanel() {
-  const { candles, signal } = useTradingStore();
+  const { candles, signal, dataError } = useTradingStore();
 
   const scores = BASE.map((strategy) => {
     if (!candles || candles.length === 0) return { ...strategy, confidence: 0 };
@@ -29,6 +29,15 @@ export default function StrategiesPanel() {
     }
     return { ...strategy, confidence: last.close > vwap ? 74 : 52 };
   });
+
+  if (dataError && (!candles || candles.length === 0)) {
+    return (
+      <section>
+        <h3>AI Strategies</h3>
+        <p className="panel__error">Cannot score strategies — {dataError}</p>
+      </section>
+    );
+  }
 
   return (
     <section>

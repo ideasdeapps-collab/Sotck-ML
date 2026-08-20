@@ -8,13 +8,17 @@ function format(value?: number) {
 }
 
 export default function IndicatorsPanel() {
-  const { candles, ticker } = useTradingStore();
+  const { candles, ticker, dataError } = useTradingStore();
 
   if (!candles || candles.length === 0) {
     return (
       <section>
         <h3>Indicators</h3>
-        <p>Loading {ticker} series…</p>
+        {dataError ? (
+          <p className="panel__error">No data for {ticker} — {dataError}</p>
+        ) : (
+          <p>Loading {ticker} series…</p>
+        )}
       </section>
     );
   }

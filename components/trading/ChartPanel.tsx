@@ -20,7 +20,7 @@ const TIMEFRAMES = ['1m', '5m', '15m', '1h', '1d'];
 export default function ChartPanel() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const candlesRef = useRef<Candle[]>([]);
-  const { ticker, timeframe, setTimeframe, setMarkers, setCandles, setLive } = useTradingStore();
+  const { ticker, timeframe, setTimeframe, setMarkers, setCandles, setLive, setDataError } = useTradingStore();
   const [source, setSource] = useState<string>('');
   const [isDemo, setIsDemo] = useState(false);
   const [error, setError] = useState<string>('');
@@ -82,11 +82,14 @@ export default function ChartPanel() {
         const candles: Candle[] = Array.isArray(data?.candles) ? data.candles : [];
 
         if (candles.length === 0) {
-          setError(data?.note || data?.error || 'No candles returned');
+          const reason = data?.note || data?.error || 'No candles returned';
+          setError(reason);
+          setDataError(reason);
           return;
         }
 
         setError('');
+        setDataError('');
         const labels: Record<string, string> = {
           polygon: 'Polygon · live',
           'polygon-cached': 'Polygon · cached',
@@ -123,7 +126,10 @@ export default function ChartPanel() {
 
         setLive(true);
       } catch (err: any) {
-        if (!disposed) setError(err?.message || 'Failed to load candles');
+        if (disposed) return;
+        const reason = err?.message || 'Failed to load candles';
+        setError(reason);
+        setDataError(reason);
       }
     }
 
