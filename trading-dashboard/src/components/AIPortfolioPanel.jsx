@@ -1,0 +1,1 @@
+export default function AIPortfolioPanel(){return <div className="card p-5"><h3 className="font-bold text-lg">AI Portfolio Intelligence</h3><div className="mt-4 space-y-3"><p>Market Regime: <span className="text-green-400">Bullish</span></p><p>AI Confidence: 91%</p><p>Risk Level: Medium</p><p>Suggested Action: Hold NVDA</p></div></div>}
