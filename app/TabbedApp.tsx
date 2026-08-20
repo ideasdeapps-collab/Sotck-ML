@@ -11,7 +11,30 @@ import BacktestChart from "./BacktestChart";
 import Dashboard from "./Dashboard";
 import IntradaySessionTab from "./IntradaySessionTab";
 import LiveTradingTab from "./LiveTradingTab";
-import TradingWorkspace from "./trading/components/TradingWorkspace";
+
+function TradingLabLink() {
+  return (
+    <div style={{ padding: 24, border: "1px solid #eee", borderRadius: 12 }}>
+      <p style={{ margin: "0 0 12px" }}>
+        Trading Lab tiene su propio terminal a pantalla completa.
+      </p>
+      <a
+        href="/trading"
+        style={{
+          display: "inline-block",
+          padding: "10px 16px",
+          borderRadius: 8,
+          background: "#05070a",
+          color: "#22c55e",
+          fontWeight: 700,
+          textDecoration: "none",
+        }}
+      >
+        Abrir Trading Lab →
+      </a>
+    </div>
+  );
+}
 
 const TABS = [
   { id: "forecast", label: "📈 Predicción", node: <StockForecastChart /> },
@@ -23,7 +46,7 @@ const TABS = [
   { id: "intraday-ml", label: "🕐 Sesión ML", node: <IntradaySessionTab /> },
   { id: "backtest", label: "🎯 Backtest", node: <BacktestChart /> },
   { id: "live", label: "🤖 AI Live Trading", node: <LiveTradingTab /> },
-  { id: "trading-lab", label: "🧪 Trading Lab", node: <TradingWorkspace /> },
+  { id: "trading-lab", label: "🧪 Trading Lab", node: <TradingLabLink /> },
   { id: "dashboard", label: "📊 Panel", node: <Dashboard /> },
 ];
 
