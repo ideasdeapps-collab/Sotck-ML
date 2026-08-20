@@ -2,9 +2,40 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  .trading-root {
-    color-scheme: dark;
-    min-height: 100vh;
+.trading-terminal {
+  display: flex;
+  min-height: 100vh;
+  background: #05070a;
+  color: #e5e7eb;
+}
+
+.trading-main {
+  flex: 1;
+  padding: 16px;
+}
+
+.chart-panel,
+.trading-grid > * {
+  background: #0b0f14;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.trading-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+@media (max-width: 1100px) {
+  .trading-grid {
+    grid-template-columns: 1fr;
   }
+}
+
+.trading-root {
+  color-scheme: dark;
+  min-height: 100vh;
 }
