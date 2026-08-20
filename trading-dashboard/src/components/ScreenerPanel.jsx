@@ -1,0 +1,2 @@
+const stocks=[['NVDA','BUY','92'],['AMD','WATCH','74'],['TSM','BUY','88'],['ASML','HOLD','69']];
+export default function ScreenerPanel(){return <div className="card p-5"><h3 className="font-bold text-lg">AI Screener</h3><table className="w-full mt-4"><tbody>{stocks.map(s=><tr className="border-b border-gray-800"><td className="py-3">{s[0]}</td><td className="text-green-400">{s[1]}</td><td>{s[2]}%</td></tr>)}</tbody></table></div>}
