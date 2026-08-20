@@ -1,5 +1,16 @@
-import {NextResponse} from 'next/server';
-export async function POST(req:Request){
- const {ticker,timeframe}=await req.json();
- return NextResponse.json({ticker,timeframe,signal:'BUY',confidence:91,strategy:'Momentum Breakout',entry:178.4,stop:175,target:186});
+import { NextResponse } from 'next/server';
+import { getCandles } from '@/lib/trading/marketData';
+import { generateAISignal } from '@/lib/trading/aiSignalEngine';
+
+export async function POST(request: Request) {
+  const { ticker = 'NVDA', timeframe = '1m' } = await request.json();
+
+  const market = await getCandles(ticker, timeframe);
+  const candles = market.candles || market;
+  const signal = generateAISignal(candles);
+
+  return NextResponse.json({
+    ticker,
+    ...signal
+  });
 }
