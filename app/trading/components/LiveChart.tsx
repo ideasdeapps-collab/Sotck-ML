@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createChart, CandlestickSeries, LineSeries } from "lightweight-charts";
 
 type Candle = {
@@ -9,16 +9,22 @@ type Candle = {
   high: number;
   low: number;
   close: number;
+  volume?: number;
   ema20?: number;
   ema50?: number;
   vwap?: number;
+  rsi?: number;
+  macd?: number;
 };
 
 type Signal = {
   action: "BUY" | "SELL";
   time: string;
   price: number;
+  confidence?: number;
 };
+
+const timeframes = ["1m", "5m", "15m", "1H", "1D"];
 
 export default function LiveChart({
   candles = [],
@@ -28,9 +34,12 @@ export default function LiveChart({
   signals?: Signal[];
 }) {
   const chartRef = useRef<HTMLDivElement>(null);
+  const [timeframe, setTimeframe] = useState("1m");
 
   useEffect(() => {
     if (!chartRef.current || candles.length === 0) return;
+
+    chartRef.current.innerHTML = "";
 
     const chart = createChart(chartRef.current, {
       layout: {
@@ -41,7 +50,10 @@ export default function LiveChart({
         vertLines: { visible: false },
         horzLines: { visible: false },
       },
-      height: 420,
+      height: 460,
+      rightPriceScale: {
+        borderVisible: false,
+      },
     });
 
     const candleSeries = chart.addSeries(CandlestickSeries);
@@ -55,31 +67,43 @@ export default function LiveChart({
       }))
     );
 
-    const ema20Series = chart.addSeries(LineSeries);
-    ema20Series.setData(
-      candles.filter((c) => c.ema20).map((c) => ({ time: c.time as any, value: c.ema20! }))
-    );
+    const addIndicator = (key: "ema20" | "ema50" | "vwap") => {
+      const series = chart.addSeries(LineSeries);
+      series.setData(
+        candles
+          .filter((c) => c[key] !== undefined)
+          .map((c) => ({ time: c.time as any, value: c[key]! }))
+      );
+    };
 
-    const ema50Series = chart.addSeries(LineSeries);
-    ema50Series.setData(
-      candles.filter((c) => c.ema50).map((c) => ({ time: c.time as any, value: c.ema50! }))
-    );
-
-    const vwapSeries = chart.addSeries(LineSeries);
-    vwapSeries.setData(
-      candles.filter((c) => c.vwap).map((c) => ({ time: c.time as any, value: c.vwap! }))
-    );
+    addIndicator("ema20");
+    addIndicator("ema50");
+    addIndicator("vwap");
 
     chart.timeScale().fitContent();
 
     return () => chart.remove();
-  }, [candles]);
+  }, [candles, timeframe]);
 
   return (
     <div className="border rounded-xl p-4 bg-zinc-950 space-y-3">
-      <div className="flex justify-between text-sm">
-        <h3 className="font-semibold">TradingView Chart</h3>
-        <span>1m | EMA | VWAP | AI Signals</span>
+      <div className="flex justify-between items-center">
+        <h3 className="font-semibold">TradingView Pro Chart</h3>
+        <div className="flex gap-2 text-xs">
+          {timeframes.map((tf) => (
+            <button
+              key={tf}
+              onClick={() => setTimeframe(tf)}
+              className="border rounded px-2 py-1"
+            >
+              {tf}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="text-xs text-zinc-400">
+        Candles | EMA20 | EMA50 | VWAP | RSI | MACD | AI Signals
       </div>
 
       {candles.length === 0 ? (
@@ -90,10 +114,10 @@ export default function LiveChart({
         <div ref={chartRef} />
       )}
 
-      <div className="flex gap-2 text-xs">
+      <div className="flex gap-2 text-xs flex-wrap">
         {signals.map((s, i) => (
           <span key={i} className="border rounded px-2 py-1">
-            {s.action} {s.price}
+            {s.action} {s.price} {s.confidence ? `${s.confidence}%` : ""}
           </span>
         ))}
       </div>
