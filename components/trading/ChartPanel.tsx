@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { createChart, CandlestickSeries, LineSeries } from 'lightweight-charts';
+import { createChart, CandlestickSeries, LineSeries, createSeriesMarkers } from 'lightweight-charts';
 import { useTradingStore } from '@/lib/trading/tradingStore';
 import { connectPolygonStream } from '@/lib/trading/polygonStream';
 
@@ -28,12 +28,13 @@ export default function ChartPanel() {
    addCandle(candle);
   });
 
-  if(markers.length)candleSeries.setMarkers(markers);
+  const markerApi=createSeriesMarkers(candleSeries,markers);
   setLive(true);
 
   chart.timeScale().fitContent();
 
   return()=>{
+   markerApi.detach();
    disconnect();
    setLive(false);
    chart.remove();
