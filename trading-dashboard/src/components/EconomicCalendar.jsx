@@ -1,0 +1,1 @@
+export default function EconomicCalendar(){return <div className="card p-5"><h3 className="font-bold text-lg">Economic Calendar</h3><ul className="mt-4 space-y-3 text-gray-300"><li>🕒 FED Decision - Aug 21</li><li>🇺🇸 CPI Report - Aug 23</li><li>📈 NVDA Earnings - Aug 28</li></ul></div>}
