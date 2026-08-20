@@ -5,8 +5,11 @@ import { openPosition, closePosition, getPortfolio, type Portfolio } from "@/lib
 import { useTradingStore } from "@/lib/trading/tradingStore";
 
 export default function TradingSimulator() {
-  const { ticker, signal } = useTradingStore();
+  const { ticker, signal, capital, bumpPortfolio } = useTradingStore();
   const [portfolio, setPortfolio] = useState<Portfolio>(() => getPortfolio());
+
+  // Reflect capital edits made in the sidebar while no position is open.
+  const balance = portfolio.positions.length === 0 ? capital : portfolio.balance;
   const [shares, setShares] = useState(100);
   const [message, setMessage] = useState("");
 
@@ -29,6 +32,7 @@ export default function TradingSimulator() {
 
     setMessage(result ? `Bought ${shares} ${ticker} @ ${entry}` : "Insufficient balance");
     setPortfolio(getPortfolio());
+    bumpPortfolio();
   }
 
   function sell() {
@@ -40,6 +44,7 @@ export default function TradingSimulator() {
     const pnl = closePosition(ticker, entry);
     setMessage(pnl === null ? `No open position on ${ticker}` : `Closed ${ticker} · PnL ${pnl.toFixed(2)}`);
     setPortfolio(getPortfolio());
+    bumpPortfolio();
   }
 
   return (
@@ -65,7 +70,7 @@ export default function TradingSimulator() {
           SELL
         </button>
       </div>
-      <p>Balance ${portfolio.balance.toFixed(2)}</p>
+      <p>Balance ${balance.toFixed(2)}</p>
       <p>
         Position: {open ? `${open.shares} @ ${open.entry}` : "None"}
       </p>

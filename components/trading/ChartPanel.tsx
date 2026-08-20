@@ -12,6 +12,7 @@ import { useTradingStore } from '@/lib/trading/tradingStore';
 import { connectPolygonStream } from '@/lib/trading/polygonStream';
 import { generateAISignal, signalToMarker } from '@/lib/trading/aiSignalEngine';
 import { calculateIndicators } from '@/lib/trading/indicators';
+import { fetchJson } from '@/lib/trading/fetchJson';
 import type { Candle } from '@/lib/trading/marketData';
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '1d'];
@@ -72,11 +73,9 @@ export default function ChartPanel() {
 
     async function load() {
       try {
-        const response = await fetch(
-          `/api/market/candles?ticker=${encodeURIComponent(ticker)}&timeframe=${encodeURIComponent(timeframe)}`,
-          { cache: 'no-store' }
+        const data = await fetchJson(
+          `/api/market/candles?ticker=${encodeURIComponent(ticker)}&timeframe=${encodeURIComponent(timeframe)}`
         );
-        const data = await response.json();
 
         if (disposed) return;
 

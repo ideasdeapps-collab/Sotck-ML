@@ -40,6 +40,14 @@ export function closePosition(ticker: string, price: number) {
   return pnl;
 }
 
+/** Sets the starting capital. Refused while a position is open, since the
+ *  balance would no longer reconcile with the money already committed. */
+export function setCapital(amount: number) {
+  if (positions.length > 0) return null;
+  balance = amount;
+  return balance;
+}
+
 export function updateBalance(amount: number) {
   balance += amount;
   return balance;

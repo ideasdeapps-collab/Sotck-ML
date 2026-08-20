@@ -8,11 +8,13 @@ export type TradingState = {
   mode: string;
   capital: number;
   indicators: { ema20: boolean; ema50: boolean; vwap: boolean; bollinger: boolean };
+  watchlist: string[];
   signal: any;
   markers: SeriesMarker<Time>[];
   candles: any[];
   session: boolean;
   live: boolean;
+  portfolioVersion: number;
   status: string;
 };
 
@@ -21,12 +23,14 @@ let state: TradingState = {
   timeframe: "1m",
   mode: "Live",
   capital: 100000,
+  watchlist: ["NVDA", "AMD", "TSLA", "AAPL", "SNDK", "MSFT", "SPY"],
   indicators: { ema20: true, ema50: true, vwap: true, bollinger: true },
   signal: null,
   markers: [],
   candles: [],
   session: false,
   live: false,
+  portfolioVersion: 0,
   status: "Idle",
 };
 
@@ -54,6 +58,14 @@ function patch(next: Partial<TradingState>) {
 
 export const actions = {
   setTicker: (ticker: string) => patch({ ticker }),
+  setCapital: (capital: number) => patch({ capital }),
+  addToWatchlist: (ticker: string) => {
+    const symbol = ticker.trim().toUpperCase();
+    if (!symbol || state.watchlist.includes(symbol)) return;
+    patch({ watchlist: [...state.watchlist, symbol] });
+  },
+  removeFromWatchlist: (ticker: string) =>
+    patch({ watchlist: state.watchlist.filter((item) => item !== ticker) }),
   setTimeframe: (timeframe: string) => patch({ timeframe }),
   setMode: (mode: string) => patch({ mode }),
   setSignal: (signal: any) => patch({ signal }),
@@ -62,6 +74,7 @@ export const actions = {
   addCandle: (candle: any) => patch({ candles: [...state.candles.slice(-500), candle] }),
   setSession: (session: boolean) => patch({ session }),
   setLive: (live: boolean) => patch({ live }),
+  bumpPortfolio: () => patch({ portfolioVersion: state.portfolioVersion + 1 }),
   setStatus: (status: string) => patch({ status }),
 };
 

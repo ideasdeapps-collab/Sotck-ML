@@ -1,4 +1,5 @@
 import type { Candle } from './marketData';
+import { fetchJson } from './fetchJson';
 
 type CandleHandler = (candle: Candle) => void;
 
@@ -22,13 +23,9 @@ export function connectPolygonStream(
 
   async function poll() {
     try {
-      const response = await fetch(
-        `/api/market/candles?ticker=${encodeURIComponent(ticker)}&timeframe=${encodeURIComponent(timeframe)}`,
-        { cache: 'no-store' }
+      const data = await fetchJson(
+        `/api/market/candles?ticker=${encodeURIComponent(ticker)}&timeframe=${encodeURIComponent(timeframe)}`
       );
-      if (!response.ok) return;
-
-      const data = await response.json();
       const candles: Candle[] = data?.candles || [];
       const last = candles[candles.length - 1];
       if (!last || stopped) return;
