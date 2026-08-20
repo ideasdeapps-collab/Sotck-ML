@@ -1,0 +1,2 @@
+const strategies=[['Momentum Breakout','92%'],['VWAP Reclaim','84%'],['EMA Pullback','78%'],['Mean Reversion','71%']];
+export default function StrategiesPanel(){return <div className="card p-4"><h3 className="font-bold text-lg">AI Strategies</h3><div className="grid gap-3 mt-4">{strategies.map(s=><div className="bg-[#121212] p-3 rounded-xl flex justify-between"><span>{s[0]}</span><span className="text-[#00C853]">{s[1]}</span></div>)}</div></div>}
