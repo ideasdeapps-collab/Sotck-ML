@@ -181,7 +181,12 @@ export type PremarketResponse = {
 };
 
 export type ChartOverlay = {
-  support_resistance: { support?: number; resistance?: number; zones?: { type: string; price: number }[] };
+  support_resistance: {
+    support?: number;
+    resistance?: number;
+    /** `touches` is the pivot count from `cluster_levels` in api/intraday.py. */
+    zones?: { type: string; price: number; touches?: number }[];
+  };
   fvg_rectangles: { type: string; top: number; bottom: number; time?: string }[];
   order_blocks: { type: string; high: number; low: number; volume: number; time?: string }[];
   liquidity_markers: { signal: string; level?: number; time?: string };

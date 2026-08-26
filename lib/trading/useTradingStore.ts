@@ -2,6 +2,7 @@
 import { useSyncExternalStore } from "react";
 import type { SeriesMarker, Time } from "lightweight-charts";
 import { DEFAULT_OVERLAYS, type OverlayId, type OverlayState } from "./overlays/registry";
+import type { PlanBias } from "./dayTrading/intradayPlan";
 import type { TickerCapabilities } from "@/types/trading";
 
 export type TradingState = {
@@ -11,6 +12,10 @@ export type TradingState = {
   capital: number;
   /** Which chart overlays are switched on. */
   overlays: OverlayState;
+  /** Direction the intraday plan is built for; shared by the chart and the panel. */
+  planBias: PlanBias;
+  /** Fraction of capital risked per trade, as the management panel has it. */
+  riskPerTrade: number;
   /** Which predictive curves exist for the current ticker; null until probed. */
   capabilities: TickerCapabilities | null;
   /** False when the ML API could not be reached at all. */
@@ -33,6 +38,8 @@ let state: TradingState = {
   capital: 100000,
   watchlist: ["NVDA", "AMD", "TSLA", "AAPL", "SNDK", "MSFT", "SPY"],
   overlays: { ...DEFAULT_OVERLAYS },
+  planBias: "auto",
+  riskPerTrade: 0.01,
   capabilities: null,
   apiReachable: false,
   signal: null,
@@ -89,6 +96,8 @@ export const actions = {
   bumpPortfolio: () => patch({ portfolioVersion: state.portfolioVersion + 1 }),
   setStatus: (status: string) => patch({ status }),
   setOverlay: (id: OverlayId, on: boolean) => patch({ overlays: { ...state.overlays, [id]: on } }),
+  setPlanBias: (planBias: PlanBias) => patch({ planBias }),
+  setRiskPerTrade: (riskPerTrade: number) => patch({ riskPerTrade }),
   setCapabilities: (capabilities: TickerCapabilities | null, apiReachable: boolean) =>
     patch({ capabilities, apiReachable }),
 };

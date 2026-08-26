@@ -42,6 +42,7 @@ export default function ChartPanel() {
     setDataError,
     candles,
     overlays,
+    planBias,
     capabilities,
     apiReachable,
     setCapabilities,
@@ -236,8 +237,9 @@ export default function ChartPanel() {
       enabled: overlays,
       allowed,
       remote,
+      bias: planBias,
     });
-  }, [candles, overlays, remote, allowed]);
+  }, [candles, overlays, remote, allowed, planBias]);
 
   /** Failures that the toggles alone cannot explain. */
   const overlayErrors = Object.entries(remote)

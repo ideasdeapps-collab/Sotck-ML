@@ -11,9 +11,10 @@ import type { TickerCapabilities } from '@/types/trading';
  * source, so enabling both Fibonacci and ZigZag costs one request, not two.
  */
 
-export type OverlaySource = 'local' | 'xgb' | 'mlp' | 'extended' | 'forecast' | 'session' | 'technical' | 'patterns';
+export type OverlaySource = 'local' | 'xgb' | 'mlp' | 'extended' | 'forecast' | 'session' | 'technical' | 'patterns' | 'intraday';
 
 export type OverlayId =
+  | 'plan'
   | 'ema'
   | 'vwap'
   | 'bollinger'
@@ -32,7 +33,7 @@ export type OverlayId =
   | 'zigzag'
   | 'sma';
 
-export type OverlayGroup = 'Indicadores' | 'Day trading' | 'Estructura' | 'Curvas predictivas';
+export type OverlayGroup = 'Plan de trading' | 'Indicadores' | 'Day trading' | 'Estructura' | 'Curvas predictivas';
 
 export type OverlayDef = {
   id: OverlayId;
@@ -49,6 +50,8 @@ export type OverlayDef = {
 const INTRADAY = ['1m', '5m', '15m', '1h'];
 
 export const OVERLAYS: OverlayDef[] = [
+  { id: 'plan', label: 'Plan intradía (S/R + entrada/TP/SL)', group: 'Plan de trading', source: 'intraday', timeframes: INTRADAY, hint: 'Zonas de soporte y resistencia, zona de entrada, TP1/TP2 y stop loss derivados de los niveles con más toques' },
+
   { id: 'ema', label: 'EMA 20/50', group: 'Indicadores', source: 'local', hint: 'Medias exponenciales sobre las velas cargadas' },
   { id: 'vwap', label: 'VWAP + bandas', group: 'Indicadores', source: 'local', timeframes: INTRADAY, hint: 'VWAP anclado a la sesión con bandas ±1σ y ±2σ' },
   { id: 'bollinger', label: 'Bollinger 20', group: 'Indicadores', source: 'local', hint: 'Bandas de Bollinger de 20 periodos' },
@@ -71,11 +74,12 @@ export const OVERLAYS: OverlayDef[] = [
   { id: 'sma', label: 'SMA 20/50/200', group: 'Curvas predictivas', source: 'technical', timeframes: ['1d'], capability: 'xgb', hint: 'Medias simples calculadas por la API' },
 ];
 
-export const OVERLAY_GROUPS: OverlayGroup[] = ['Indicadores', 'Day trading', 'Estructura', 'Curvas predictivas'];
+export const OVERLAY_GROUPS: OverlayGroup[] = ['Plan de trading', 'Indicadores', 'Day trading', 'Estructura', 'Curvas predictivas'];
 
 export type OverlayState = Record<OverlayId, boolean>;
 
 export const DEFAULT_OVERLAYS: OverlayState = {
+  plan: false,
   ema: true,
   vwap: true,
   bollinger: false,

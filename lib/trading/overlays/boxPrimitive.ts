@@ -21,12 +21,16 @@ import type {
 
 export type Box = {
   from: Time;
-  to: Time;
+  /** `null` runs the box to the right edge of the chart — an open-ended zone. */
+  to: Time | null;
   top: number;
   bottom: number;
   fill: string;
   border: string;
   label?: string;
+  /** Which end of the box the label sits at. Default 'left'. */
+  labelAlign?: 'left' | 'right';
+  dashed?: boolean;
 };
 
 type BoxCoords = { left: number; right: number; top: number; bottom: number; box: Box };
@@ -50,14 +54,22 @@ class BoxRenderer implements IPrimitivePaneRenderer {
         ctx.fillStyle = box.fill;
         ctx.fillRect(x, y, width, height);
 
+        ctx.save();
         ctx.strokeStyle = box.border;
         ctx.lineWidth = Math.max(hRatio, 1);
+        if (box.dashed) ctx.setLineDash([4 * hRatio, 3 * hRatio]);
         ctx.strokeRect(x, y, width, height);
+        ctx.restore();
 
         if (box.label) {
           ctx.fillStyle = box.border;
           ctx.font = `${Math.round(10 * vRatio)}px ui-sans-serif, system-ui, sans-serif`;
-          ctx.fillText(box.label, x + 4 * hRatio, y + 11 * vRatio);
+          const padding = 6 * hRatio;
+          const right = box.labelAlign === 'right';
+          ctx.textAlign = right ? 'right' : 'left';
+          ctx.fillText(box.label, right ? x + width - padding : x + padding, y + 12 * vRatio);
+          // textAlign is sticky on the shared context; reset it for the next box.
+          ctx.textAlign = 'left';
         }
       }
     });
@@ -116,8 +128,9 @@ export class BoxPrimitive implements ISeriesPrimitive<Time> {
       const left = timeScale.timeToCoordinate(box.from);
       if (left === null) continue;
 
-      // A zone that runs to the current bar has no right edge on the scale yet.
-      const right = timeScale.timeToCoordinate(box.to) ?? rightEdge;
+      // A zone that runs to the current bar has no right edge on the scale yet;
+      // `to: null` says so explicitly.
+      const right = box.to === null ? rightEdge : (timeScale.timeToCoordinate(box.to) ?? rightEdge);
 
       next.push({ left, right: Math.max(right, left + 1), top, bottom, box });
     }

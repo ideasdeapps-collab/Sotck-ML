@@ -8,6 +8,7 @@ import ScreenerPanel from '@/components/trading/ScreenerPanel';
 import EconomicCalendar from '@/components/trading/EconomicCalendar';
 import AIPortfolioPanel from '@/components/trading/AIPortfolioPanel';
 import SignalsPanel from '@/components/trading/SignalsPanel';
+import TradePlanPanel from '@/components/trading/TradePlanPanel';
 import RegimePanel from '@/components/trading/RegimePanel';
 import './trading.css';
 
@@ -18,6 +19,7 @@ export default function TradingPage() {
       <section className="trading-main">
         <ChartPanel />
         <div className="trading-grid">
+          <TradePlanPanel />
           <SignalsPanel />
           <RegimePanel />
           <TradingSimulator />

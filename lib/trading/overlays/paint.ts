@@ -4,6 +4,7 @@ import type { Indicators } from '../indicators';
 import { toChartTime } from '../chartTime';
 import { calculateOpeningRange } from '../dayTrading/openingRange';
 import { previousDayLevels, sessionSegments } from '../dayTrading/sessions';
+import { buildIntradayPlan, zonesFromChartism, type PlanBias } from '../dayTrading/intradayPlan';
 import type { OverlayLayer, LinePoint, PriceLineSpec } from './layer';
 import type { Box } from './boxPrimitive';
 import type { OverlayId, OverlayState } from './registry';
@@ -43,10 +44,14 @@ const COLORS = {
   sma20: '#60a5fa',
   sma50: '#a3e635',
   sma200: '#f87171',
+  planEntry: '#38bdf8',
+  planStop: '#ef4444',
+  planTarget: '#22c55e',
 } as const;
 
 /** Every layer id an overlay can own, so toggling it off removes all of them. */
 const LAYER_IDS: Record<OverlayId, string[]> = {
+  plan: ['plan-support', 'plan-resistance', 'plan-entry-zone', 'plan-levels', 'plan-entry-marker'],
   ema: ['ema20', 'ema50'],
   vwap: ['vwap', 'vwap+1', 'vwap-1', 'vwap+2', 'vwap-2'],
   bollinger: ['bb-upper', 'bb-lower'],
@@ -74,6 +79,8 @@ export type PaintInput = {
   /** False when the overlay is blocked (wrong timeframe, no model, API down). */
   allowed: (id: OverlayId) => boolean;
   remote: RemoteOverlayData;
+  /** Direction the trade plan is drawn for; 'auto' derives it from confluence. */
+  bias?: PlanBias;
 };
 
 /**
@@ -151,7 +158,15 @@ function dedupe(points: LinePoint[]): LinePoint[] {
   return sorted.filter((point, index) => index === 0 || Number(point.time) !== Number(sorted[index - 1].time));
 }
 
-export function paintOverlays({ layer, candles, indicators, enabled, allowed, remote }: PaintInput): void {
+export function paintOverlays({
+  layer,
+  candles,
+  indicators,
+  enabled,
+  allowed,
+  remote,
+  bias = 'auto',
+}: PaintInput): void {
   const snap = snapper(candles);
   const last = candles[candles.length - 1];
 
@@ -250,6 +265,91 @@ export function paintOverlays({ layer, candles, indicators, enabled, allowed, re
   // --- Structure (from /patterns) -----------------------------------------
   const patterns = remote.patterns?.ok ? remote.patterns.data : null;
 
+  // --- Trade plan ----------------------------------------------------------
+  const intraday = remote.intraday?.ok ? remote.intraday.data : null;
+
+  const plan =
+    on('plan') && intraday
+      ? buildIntradayPlan({
+          candles,
+          indicators,
+          zones: zonesFromChartism(intraday.chartism),
+          trend: intraday.chartism?.structure?.trend,
+          bias,
+        })
+      : null;
+
+  if (plan && last) {
+    const from = candles[0].time as Time;
+    const long = plan.direction === 'long';
+
+    layer.boxes(
+      'plan-support',
+      plan.supportZone
+        ? [
+            {
+              from,
+              to: null,
+              top: plan.supportZone.high,
+              bottom: plan.supportZone.low,
+              fill: 'rgba(34,197,94,0.10)',
+              border: 'rgba(34,197,94,0.55)',
+              label: 'SOPORTE INTRADÍA',
+              dashed: true,
+            },
+          ]
+        : []
+    );
+
+    layer.boxes(
+      'plan-resistance',
+      plan.resistanceZone
+        ? [
+            {
+              from,
+              to: null,
+              top: plan.resistanceZone.high,
+              bottom: plan.resistanceZone.low,
+              fill: 'rgba(239,68,68,0.10)',
+              border: 'rgba(239,68,68,0.55)',
+              label: 'RESISTENCIA INTRADÍA',
+              labelAlign: 'right',
+              dashed: true,
+            },
+          ]
+        : []
+    );
+
+    layer.boxes('plan-entry-zone', [
+      {
+        from,
+        to: null,
+        top: plan.entry[1],
+        bottom: plan.entry[0],
+        fill: 'rgba(56,189,248,0.14)',
+        border: 'rgba(56,189,248,0.7)',
+        label: long ? 'ENTRADA COMPRA' : 'ENTRADA VENTA',
+      },
+    ]);
+
+    layer.priceLines('plan-levels', [
+      { price: plan.entryMid, color: COLORS.planEntry, title: 'Entrada', width: 2 },
+      { price: plan.stopLoss, color: COLORS.planStop, title: 'SL', width: 2, dashed: true },
+      { price: plan.takeProfit[0], color: COLORS.planTarget, title: 'TP1', width: 2, dashed: true },
+      { price: plan.takeProfit[1], color: COLORS.planTarget, title: 'TP2', dashed: true },
+    ]);
+
+    layer.markers('plan-entry-marker', [
+      {
+        time: last.time as Time,
+        position: long ? 'belowBar' : 'aboveBar',
+        color: long ? COLORS.bullish : COLORS.bearish,
+        shape: long ? 'arrowUp' : 'arrowDown',
+        text: long ? 'ENTRADA COMPRA' : 'ENTRADA VENTA',
+      },
+    ]);
+  } else clear('plan');
+
   if (on('levels') && patterns) {
     const zones = patterns.support_resistance?.zones ?? [];
     layer.priceLines(
@@ -257,9 +357,9 @@ export function paintOverlays({ layer, candles, indicators, enabled, allowed, re
       zones.map((zone) => ({
         price: zone.price,
         color: zone.type === 'SUPPORT' ? COLORS.support : COLORS.resistance,
-        title: `${zone.type === 'SUPPORT' ? 'S' : 'R'} ×${(zone as { touches?: number }).touches ?? 1}`,
+        title: `${zone.type === 'SUPPORT' ? 'S' : 'R'} ×${zone.touches ?? 1}`,
         // More touches = a level the market has respected more often.
-        width: Math.min(Math.max((zone as { touches?: number }).touches ?? 1, 1), 4) as 1 | 2 | 3 | 4,
+        width: Math.min(Math.max(zone.touches ?? 1, 1), 4) as 1 | 2 | 3 | 4,
       }))
     );
 

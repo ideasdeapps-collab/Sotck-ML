@@ -21,10 +21,17 @@ export type TradePlan = {
   reason?: string;
 };
 
-export function planTrade(entry: number, stop: number, target: number, capital: number): TradePlan {
+export function planTrade(
+  entry: number,
+  stop: number,
+  target: number,
+  capital: number,
+  /** Fraction of capital at risk; the panel lets the user move it off the 1% default. */
+  maxRisk = MAX_RISK
+): TradePlan {
   const riskPerShare = Math.abs(entry - stop);
   const rewardPerShare = Math.abs(target - entry);
-  const riskAmount = capital * MAX_RISK;
+  const riskAmount = capital * maxRisk;
 
   if (!Number.isFinite(riskPerShare) || riskPerShare <= 0) {
     return {
@@ -58,7 +65,7 @@ export function planTrade(entry: number, stop: number, target: number, capital: 
       shares: 0,
       riskAmount,
       riskPerShare,
-      reason: 'Risk per share exceeds 1% of capital',
+      reason: `Risk per share exceeds ${(maxRisk * 100).toFixed(2)}% of capital`,
     };
   }
 

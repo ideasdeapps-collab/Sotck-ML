@@ -472,3 +472,189 @@
   font-size: 11px;
   color: #475569 !important;
 }
+
+/* --- Trade plan panel ----------------------------------------------------- */
+
+.trade-plan {
+  /* The widest panel in the grid: it carries key levels, both scenarios and
+     the sizing block, so it gets two columns where the layout allows. */
+  grid-column: span 2;
+}
+
+@media (max-width: 1100px) {
+  .trade-plan {
+    grid-column: auto;
+  }
+}
+
+.trade-plan__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.trade-plan__bias {
+  display: flex;
+  gap: 4px;
+}
+
+.trade-plan__bias button {
+  border: 1px solid #1f2937;
+  background: #0b0f14;
+  color: #94a3b8;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.trade-plan__bias button.is-active {
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.trade-plan h4 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  margin: 16px 0 8px;
+}
+
+.trade-plan__direction {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 4px 0 0 !important;
+}
+
+.trade-plan__direction small {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: #64748b;
+}
+
+.trade-plan .is-bullish { color: #22c55e; }
+.trade-plan .is-bearish { color: #ef4444; }
+
+.trade-plan__levels {
+  margin: 0;
+  font-size: 13px;
+}
+
+.trade-plan__levels > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(31, 41, 55, 0.6);
+}
+
+.trade-plan__levels > div:last-child {
+  border-bottom: none;
+}
+
+.trade-plan__levels dt {
+  color: #94a3b8;
+}
+
+.trade-plan__levels dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.trade-plan__scenarios {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.trade-plan__scenario {
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.trade-plan__scenario.is-bullish { border-color: rgba(34, 197, 94, 0.4); }
+.trade-plan__scenario.is-bearish { border-color: rgba(239, 68, 68, 0.4); }
+
+.trade-plan__scenario h5 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+
+.trade-plan__scenario.is-bullish h5 { color: #22c55e; }
+.trade-plan__scenario.is-bearish h5 { color: #ef4444; }
+
+.trade-plan__condition {
+  font-size: 12px;
+  margin: 0 0 6px !important;
+  color: #94a3b8 !important;
+}
+
+.trade-plan__scenario dl {
+  margin: 0;
+  font-size: 12px;
+}
+
+.trade-plan__scenario dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.trade-plan__scenario dt { color: #64748b; }
+
+.trade-plan__scenario dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-plan__checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+}
+
+.trade-plan__checklist li {
+  padding: 3px 0;
+  color: #cbd5f5;
+}
+
+.trade-plan__checklist li span {
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.trade-plan__checklist li.is-ok span { color: #22c55e; }
+.trade-plan__checklist li.is-pending span { color: #64748b; }
+
+.trade-plan__checklist li small {
+  color: #475569;
+  margin-left: 4px;
+}
+
+.trade-plan__risk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.trade-plan__risk input {
+  width: 70px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  border: 1px solid #1f2937;
+  background: #05070a;
+  color: #e5e7eb;
+  font-size: 12px;
+}

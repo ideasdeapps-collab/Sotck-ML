@@ -1,6 +1,7 @@
 import {
   fetchExtendedCurve,
   fetchForecast,
+  fetchIntraday,
   fetchMlpCurve,
   fetchPatterns,
   fetchSessionCurve,
@@ -10,6 +11,7 @@ import {
 import { OVERLAYS, type OverlayId, type OverlaySource, type OverlayState } from './registry';
 import type {
   ForecastResponse,
+  IntradayResponse,
   MlResult,
   PatternsResponse,
   PredictCurve,
@@ -26,6 +28,7 @@ export type RemoteOverlayData = {
   session?: MlResult<SessionPrediction>;
   technical?: MlResult<TechnicalResponse>;
   patterns?: MlResult<PatternsResponse>;
+  intraday?: MlResult<IntradayResponse>;
 };
 
 /** Which remote sources the currently enabled, currently allowed overlays need. */
@@ -46,7 +49,7 @@ export function requiredSources(
 }
 
 /** Minutes per bar, so /patterns is asked for the same granularity the chart shows. */
-function intervalFor(timeframe: string): number {
+export function intervalFor(timeframe: string): number {
   const map: Record<string, number> = { '1m': 1, '5m': 5, '15m': 15, '1h': 60 };
   return map[timeframe] ?? 15;
 }
@@ -74,6 +77,8 @@ export async function loadRemoteOverlays(
         return ['technical', await fetchTechnical(ticker)];
       case 'patterns':
         return ['patterns', await fetchPatterns(ticker, interval, interval >= 15 ? 2 : 1)];
+      case 'intraday':
+        return ['intraday', await fetchIntraday(ticker, interval, interval >= 15 ? 2 : 1)];
       default:
         return [source, undefined];
     }
