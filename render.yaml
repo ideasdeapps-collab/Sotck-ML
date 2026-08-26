@@ -7,12 +7,18 @@
 #   1. Sube el repo a GitHub.
 #   2. En Render: New → Blueprint → selecciona este repo (detecta render.yaml).
 #   3. Rellena las variables marcadas 'sync: false' en el dashboard.
-#   4. Copia la URL pública (https://stock-ml-api.onrender.com) y ponla en
-#      Vercel como NEXT_PUBLIC_ML_API_URL.
+#   4. Copia la URL pública y ponla en Vercel (y en tu .env.local) como:
+#        NEXT_PUBLIC_ML_API_URL  → la usan las pestañas de recharts (app/*.tsx)
+#        ML_API_URL              → la usa el proxy del Trading Lab
+#
+# URL en producción: https://sotck-ml.onrender.com
+# El nombre del servicio decide el subdominio, así que 'name' debe coincidir
+# con el servicio ya desplegado. Antes decía 'stock-ml-api', que apuntaba a un
+# host que responde 503.
 
 services:
   - type: web
-    name: stock-ml-api
+    name: sotck-ml
     runtime: docker
     dockerfilePath: ./api/Dockerfile
     dockerContext: .            # contexto = raíz del repo (copia api/ + training/)
