@@ -658,3 +658,257 @@
   color: #e5e7eb;
   font-size: 12px;
 }
+
+.trade-plan__save {
+  width: 100%;
+  margin-top: 12px;
+  padding: 9px;
+  border-radius: 8px;
+  border: 1px solid #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  color: #38bdf8;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.trade-plan__save:hover {
+  background: rgba(56, 189, 248, 0.2);
+}
+
+/* --- Plan alerts ---------------------------------------------------------- */
+
+.trade-plan__alerts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.trade-plan__alerts-head h4 {
+  margin-bottom: 0;
+}
+
+.trade-plan__alerts-head button {
+  border: 1px solid #1f2937;
+  background: #0b0f14;
+  color: #94a3b8;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.trade-plan__alerts-head button.is-active {
+  border-color: #22c55e;
+  color: #22c55e;
+}
+
+.trade-plan__armed {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 4px 12px;
+  font-size: 12px;
+}
+
+.trade-plan__armed li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: #94a3b8;
+}
+
+.trade-plan__armed li b {
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-plan__armed li small {
+  color: #475569;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-plan__alert-log {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  font-size: 12px;
+}
+
+.trade-plan__alert-log li {
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(31, 41, 55, 0.6);
+  color: #cbd5f5;
+}
+
+.trade-plan__alert-log li:last-child {
+  border-bottom: none;
+}
+
+.trade-plan__alert-log li small {
+  color: #475569;
+  margin-right: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-plan__alert-log li.is-good { color: #22c55e; }
+.trade-plan__alert-log li.is-bad { color: #ef4444; }
+.trade-plan__alert-log li.is-info { color: #38bdf8; }
+
+/* --- Screener ------------------------------------------------------------- */
+
+.screener__header,
+.journal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.screener__header h3,
+.journal__header h3 {
+  margin: 0;
+}
+
+.screener__header button,
+.journal__header button {
+  border: 1px solid #1f2937;
+  background: #0b0f14;
+  color: #cbd5f5;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.screener__header button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.screener__rows {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+
+.screener__rows li {
+  border-bottom: 1px solid rgba(31, 41, 55, 0.6);
+}
+
+.screener__rows li:last-child {
+  border-bottom: none;
+}
+
+.screener__rows li button {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 2px 8px;
+  width: 100%;
+  padding: 7px 4px;
+  border: none;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.screener__rows li.is-active button {
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.screener__ticker {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.screener__verdict {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.screener__detail {
+  grid-column: 2;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.screener__detail b {
+  color: #22c55e;
+}
+
+/* --- Session journal ------------------------------------------------------ */
+
+.journal__rows {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+
+.journal__rows li {
+  padding: 7px 4px;
+  border-bottom: 1px solid rgba(31, 41, 55, 0.6);
+}
+
+.journal__rows li:last-child {
+  border-bottom: none;
+}
+
+.journal__rows li.is-active {
+  background: rgba(56, 189, 248, 0.06);
+}
+
+.journal__row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.journal__row-head button {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: #475569;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.journal__row-head button:hover {
+  color: #f87171;
+}
+
+.journal__rows small {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.journal__outcome {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid #1f2937;
+  color: #94a3b8;
+}
+
+.journal__outcome.is-tp1,
+.journal__outcome.is-tp2 {
+  border-color: rgba(34, 197, 94, 0.5);
+  color: #22c55e;
+}
+
+.journal__outcome.is-stop {
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #ef4444;
+}
+
+.journal .is-bullish { color: #22c55e; }
+.journal .is-bearish { color: #ef4444; }

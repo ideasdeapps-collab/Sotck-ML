@@ -12,6 +12,8 @@ import {
   type PlanScenario,
 } from '@/lib/trading/dayTrading/intradayPlan';
 import { planTrade } from '@/lib/trading/dayTrading/positionSize';
+import { recordPlan } from '@/lib/trading/dayTrading/journal';
+import PlanAlerts from './PlanAlerts';
 import type { Candle } from '@/lib/trading/marketData';
 import type { IntradayResponse } from '@/types/trading';
 
@@ -260,6 +262,23 @@ export default function TradePlanPanel() {
       </p>
 
       {!sizing.approved && <p className="panel__error">Setup no aprobado — {sizing.reason}</p>}
+
+      <button
+        type="button"
+        className="trade-plan__save"
+        onClick={() =>
+          recordPlan(plan, {
+            ticker,
+            timeframe,
+            shares: sizing.shares,
+            riskAmount: sizing.riskAmount,
+          })
+        }
+      >
+        Guardar en el diario
+      </button>
+
+      <PlanAlerts plan={plan} ticker={ticker} />
 
       <p className="signals-panel__quiet">{plan.rationale}</p>
     </section>
