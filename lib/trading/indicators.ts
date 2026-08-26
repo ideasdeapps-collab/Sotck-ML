@@ -1,4 +1,5 @@
 import type { Candle } from './marketData';
+import { calculateSessionVwap, type VwapBands } from './dayTrading/sessionVwap';
 
 export function calculateEMA(candles: Candle[], period: number) {
   const k = 2 / (period + 1);
@@ -10,15 +11,13 @@ export function calculateEMA(candles: Candle[], period: number) {
   return result;
 }
 
+/**
+ * Session-anchored VWAP. Delegates to `dayTrading/sessionVwap` — this used to
+ * accumulate over the entire series, which on the 1m timeframe (3-day lookback)
+ * blended three sessions into a single, meaningless average.
+ */
 export function calculateVWAP(candles: Candle[]) {
-  let cumulativeVolume = 0;
-  let cumulativeValue = 0;
-  return candles.map(c => {
-    const typical = (c.high + c.low + c.close) / 3;
-    cumulativeValue += typical * c.volume;
-    cumulativeVolume += c.volume;
-    return cumulativeValue / cumulativeVolume;
-  });
+  return calculateSessionVwap(candles).vwap;
 }
 
 export function calculateBollinger(candles: Candle[], period = 20) {
@@ -33,11 +32,21 @@ export function calculateBollinger(candles: Candle[], period = 20) {
   return { upper, middle, lower };
 }
 
-export function calculateIndicators(candles: Candle[]) {
+export type Indicators = {
+  ema20: number[];
+  ema50: number[];
+  vwap: number[];
+  vwapBands: VwapBands;
+  bollinger: { upper: number[]; middle: number[]; lower: number[] };
+};
+
+export function calculateIndicators(candles: Candle[]): Indicators {
+  const vwapBands = calculateSessionVwap(candles);
   return {
     ema20: calculateEMA(candles,20),
     ema50: calculateEMA(candles,50),
-    vwap: calculateVWAP(candles),
+    vwap: vwapBands.vwap,
+    vwapBands,
     bollinger: calculateBollinger(candles)
   };
 }

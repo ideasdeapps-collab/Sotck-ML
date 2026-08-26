@@ -1,13 +1,20 @@
 "use client";
 import { useSyncExternalStore } from "react";
 import type { SeriesMarker, Time } from "lightweight-charts";
+import { DEFAULT_OVERLAYS, type OverlayId, type OverlayState } from "./overlays/registry";
+import type { TickerCapabilities } from "@/types/trading";
 
 export type TradingState = {
   ticker: string;
   timeframe: string;
   mode: string;
   capital: number;
-  indicators: { ema20: boolean; ema50: boolean; vwap: boolean; bollinger: boolean };
+  /** Which chart overlays are switched on. */
+  overlays: OverlayState;
+  /** Which predictive curves exist for the current ticker; null until probed. */
+  capabilities: TickerCapabilities | null;
+  /** False when the ML API could not be reached at all. */
+  apiReachable: boolean;
   watchlist: string[];
   signal: any;
   markers: SeriesMarker<Time>[];
@@ -25,7 +32,9 @@ let state: TradingState = {
   mode: "Live",
   capital: 100000,
   watchlist: ["NVDA", "AMD", "TSLA", "AAPL", "SNDK", "MSFT", "SPY"],
-  indicators: { ema20: true, ema50: true, vwap: true, bollinger: true },
+  overlays: { ...DEFAULT_OVERLAYS },
+  capabilities: null,
+  apiReachable: false,
   signal: null,
   markers: [],
   candles: [],
@@ -79,6 +88,9 @@ export const actions = {
   setDataError: (dataError: string) => patch({ dataError }),
   bumpPortfolio: () => patch({ portfolioVersion: state.portfolioVersion + 1 }),
   setStatus: (status: string) => patch({ status }),
+  setOverlay: (id: OverlayId, on: boolean) => patch({ overlays: { ...state.overlays, [id]: on } }),
+  setCapabilities: (capabilities: TickerCapabilities | null, apiReachable: boolean) =>
+    patch({ capabilities, apiReachable }),
 };
 
 export function useTradingStore() {

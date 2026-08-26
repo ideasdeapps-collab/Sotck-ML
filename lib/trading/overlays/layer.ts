@@ -1,0 +1,192 @@
+import {
+  LineSeries,
+  LineStyle,
+  createSeriesMarkers,
+  type IChartApi,
+  type IPriceLine,
+  type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type SeriesMarker,
+  type Time,
+} from 'lightweight-charts';
+import { BoxPrimitive, type Box } from './boxPrimitive';
+
+/**
+ * One place that owns everything drawn on top of the candles.
+ *
+ * Each overlay is addressed by a stable id, so toggling one off removes only
+ * its own artefacts. Without this, ChartPanel would have to tear the whole
+ * chart down and rebuild it whenever a checkbox changed — which is what the
+ * previous single-useEffect version effectively did on every ticker change.
+ */
+
+export type LinePoint = { time: Time; value: number };
+
+export type LineOptions = {
+  color: string;
+  lineWidth?: 1 | 2 | 3 | 4;
+  dashed?: boolean;
+  title?: string;
+};
+
+export type PriceLineSpec = {
+  price: number;
+  color: string;
+  title: string;
+  width?: 1 | 2 | 3 | 4;
+  dashed?: boolean;
+};
+
+export type OverlayLayer = {
+  line(id: string, points: LinePoint[], options: LineOptions): void;
+  priceLines(id: string, levels: PriceLineSpec[]): void;
+  boxes(id: string, boxes: Box[]): void;
+  markers(id: string, markers: SeriesMarker<Time>[]): void;
+  remove(id: string): void;
+  destroy(): void;
+};
+
+export function createOverlayLayer(
+  chart: IChartApi,
+  anchorSeries: ISeriesApi<'Candlestick', Time>
+): OverlayLayer {
+  const lines = new Map<string, ISeriesApi<'Line', Time>>();
+  const priceLines = new Map<string, IPriceLine[]>();
+  const boxLayers = new Map<string, BoxPrimitive>();
+  const markerGroups = new Map<string, SeriesMarker<Time>[]>();
+
+  let markerApi: ISeriesMarkersPluginApi<Time> | null = null;
+  let destroyed = false;
+
+  function repaintMarkers() {
+    const merged = Array.from(markerGroups.values())
+      .flat()
+      // lightweight-charts requires markers in ascending time order.
+      .sort((a, b) => Number(a.time) - Number(b.time));
+
+    if (merged.length === 0) {
+      markerApi?.setMarkers([]);
+      return;
+    }
+
+    if (!markerApi) markerApi = createSeriesMarkers(anchorSeries, []);
+    markerApi.setMarkers(merged);
+  }
+
+  function removeLine(id: string) {
+    const series = lines.get(id);
+    if (!series) return;
+    chart.removeSeries(series);
+    lines.delete(id);
+  }
+
+  function removePriceLines(id: string) {
+    const handles = priceLines.get(id);
+    if (!handles) return;
+    for (const handle of handles) anchorSeries.removePriceLine(handle);
+    priceLines.delete(id);
+  }
+
+  function removeBoxes(id: string) {
+    const primitive = boxLayers.get(id);
+    if (!primitive) return;
+    anchorSeries.detachPrimitive(primitive);
+    boxLayers.delete(id);
+  }
+
+  return {
+    line(id, points, options) {
+      if (destroyed) return;
+
+      if (points.length === 0) {
+        removeLine(id);
+        return;
+      }
+
+      let series = lines.get(id);
+      if (!series) {
+        series = chart.addSeries(LineSeries, {
+          color: options.color,
+          lineWidth: options.lineWidth ?? 2,
+          lineStyle: options.dashed ? LineStyle.Dashed : LineStyle.Solid,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+          title: options.title ?? '',
+        });
+        lines.set(id, series);
+      }
+
+      series.setData(points);
+    },
+
+    priceLines(id, levels) {
+      if (destroyed) return;
+      removePriceLines(id);
+      if (levels.length === 0) return;
+
+      priceLines.set(
+        id,
+        levels.map((level) =>
+          anchorSeries.createPriceLine({
+            price: level.price,
+            color: level.color,
+            lineWidth: level.width ?? 1,
+            lineStyle: level.dashed ? LineStyle.Dashed : LineStyle.Solid,
+            axisLabelVisible: true,
+            title: level.title,
+          })
+        )
+      );
+    },
+
+    boxes(id, boxes) {
+      if (destroyed) return;
+
+      if (boxes.length === 0) {
+        removeBoxes(id);
+        return;
+      }
+
+      let primitive = boxLayers.get(id);
+      if (!primitive) {
+        primitive = new BoxPrimitive();
+        anchorSeries.attachPrimitive(primitive);
+        boxLayers.set(id, primitive);
+      }
+
+      primitive.setBoxes(boxes);
+    },
+
+    markers(id, markers) {
+      if (destroyed) return;
+
+      if (markers.length === 0) markerGroups.delete(id);
+      else markerGroups.set(id, markers);
+
+      repaintMarkers();
+    },
+
+    remove(id) {
+      if (destroyed) return;
+      removeLine(id);
+      removePriceLines(id);
+      removeBoxes(id);
+      markerGroups.delete(id);
+      repaintMarkers();
+    },
+
+    destroy() {
+      if (destroyed) return;
+      destroyed = true;
+      // The chart itself is removed by the caller; only the plugin handles
+      // need explicit disposal.
+      markerApi?.detach();
+      markerApi = null;
+      markerGroups.clear();
+      lines.clear();
+      priceLines.clear();
+      boxLayers.clear();
+    },
+  };
+}

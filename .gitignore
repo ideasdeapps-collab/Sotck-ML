@@ -4,3 +4,7 @@ node_modules/
 .env.local
 .env*.local
 __pycache__/
+
+# Estado local del CLI de Supabase (incluye start-secrets/docker.env)
+supabase/.branches/
+supabase/.temp/
