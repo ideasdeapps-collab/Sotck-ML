@@ -35,9 +35,12 @@ services:
         sync: false
       - key: ALLOWED_ORIGINS
         value: https://tu-app.vercel.app,http://localhost:3000
+      # Plan Starter: llamadas ilimitadas, datos con ~15 min de retraso.
+      # (Con el free tier vuelve a 5 y 900; polygon_client.py usa MAX_CALLS
+      #  como divisor, así que nunca lo pongas en 0.)
       - key: POLYGON_MAX_CALLS_PER_MIN
-        value: "5"              # plan gratuito Polygon
+        value: "300"
       - key: TTL_INTRADAY
-        value: "900"
+        value: "15"             # = el retraso del dato, no tiene sentido menos
       - key: TTL_DAILY
         value: "3600"
