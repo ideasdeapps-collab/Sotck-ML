@@ -78,10 +78,15 @@ export const OVERLAY_GROUPS: OverlayGroup[] = ['Plan de trading', 'Indicadores',
 
 export type OverlayState = Record<OverlayId, boolean>;
 
+/**
+ * Everything starts off: the chart paints candles and nothing else, so the Lab
+ * opens as fast as the candle request allows. Each overlay is one click away in
+ * the Overlays menu.
+ */
 export const DEFAULT_OVERLAYS: OverlayState = {
   plan: false,
-  ema: true,
-  vwap: true,
+  ema: false,
+  vwap: false,
   bollinger: false,
   openingRange: false,
   prevDay: false,
