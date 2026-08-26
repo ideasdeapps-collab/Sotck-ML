@@ -4,9 +4,9 @@
   "interval_min": 15,
   "bars_per_session": 26,
   "clamp_k": 3.0,
-  "sigma_15m": 0.002418,
-  "trained_at": "2026-08-25T12:16:11.540507Z",
-  "n_samples": 1633,
+  "sigma_15m": 0.002424,
+  "trained_at": "2026-08-26T12:16:39.854356Z",
+  "n_samples": 1640,
   "feature_cols": [
     "tod_sin",
     "tod_cos",
@@ -22,8 +22,8 @@
     "ret_lag_4"
   ],
   "metrics": {
-    "mae": 0.0018954251603461717,
-    "r2": -0.0725100819417781,
-    "directional_accuracy": 0.5137614678899083
+    "mae": 0.0019506251094988931,
+    "r2": -0.05750210608055162,
+    "directional_accuracy": 0.5
   }
 }
