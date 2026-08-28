@@ -24,6 +24,7 @@ export type OverlayId =
   | 'levels'
   | 'zones'
   | 'priceAction'
+  | 'wickZones'
   | 'xgb'
   | 'mlp'
   | 'extended'
@@ -63,6 +64,7 @@ export const OVERLAYS: OverlayDef[] = [
   { id: 'levels', label: 'Soportes y resistencias', group: 'Estructura', source: 'patterns', timeframes: INTRADAY, hint: 'Clustering de pivotes con nº de toques + breakouts con volumen' },
   { id: 'zones', label: 'FVG · Order blocks · Liquidez', group: 'Estructura', source: 'patterns', timeframes: INTRADAY, hint: 'Huecos de valor, bloques institucionales y barridos de liquidez' },
   { id: 'priceAction', label: 'Patrones de vela', group: 'Estructura', source: 'patterns', timeframes: INTRADAY, hint: 'Martillo, shooting star, doji y envolventes (los que detecta intraday.py)' },
+  { id: 'wickZones', label: 'Mechas · zonas de rechazo', group: 'Estructura', source: 'local', hint: 'Velas con mecha grande como zona de órdenes: entrada al regresar a la zona, stop al otro lado y objetivo en el último máximo/mínimo relevante' },
 
   { id: 'xgb', label: 'Curva XGBoost', group: 'Curvas predictivas', source: 'xgb', timeframes: ['1d'], capability: 'xgb', hint: 'Predicción recursiva diaria del modelo principal' },
   { id: 'mlp', label: 'Curva MLP', group: 'Curvas predictivas', source: 'mlp', timeframes: ['1d'], capability: 'mlp', hint: 'Predicción de la red neuronal' },
@@ -94,6 +96,7 @@ export const DEFAULT_OVERLAYS: OverlayState = {
   levels: false,
   zones: false,
   priceAction: false,
+  wickZones: false,
   xgb: false,
   mlp: false,
   extended: false,

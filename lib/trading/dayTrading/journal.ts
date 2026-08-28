@@ -108,8 +108,20 @@ function id(): string {
   }
 }
 
+/**
+ * Lo único que el diario necesita de un plan.
+ *
+ * Estructural a propósito: `IntradayPlan` y el setup de la estrategia de mechas
+ * lo satisfacen igual, así que ambos se guardan y se resuelven con la misma
+ * maquinaria sin que el diario tenga que conocer ninguna de las dos estrategias.
+ */
+export type RecordablePlan = Pick<
+  IntradayPlan,
+  'direction' | 'entryType' | 'entry' | 'entryMid' | 'stopLoss' | 'takeProfit' | 'riskReward' | 'lastPrice'
+>;
+
 export function recordPlan(
-  plan: IntradayPlan,
+  plan: RecordablePlan,
   context: { ticker: string; timeframe: string; shares: number; riskAmount: number }
 ): JournalEntry {
   const entry: JournalEntry = {

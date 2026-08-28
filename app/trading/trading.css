@@ -912,3 +912,60 @@
 
 .journal .is-bullish { color: #22c55e; }
 .journal .is-bearish { color: #ef4444; }
+
+/* --- Estrategia de mechas --------------------------------------------------
+   La sección reutiliza las clases .trade-plan__*, así que aquí solo va la
+   lista de zonas detectadas y sus estados. */
+
+.wick-zones__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.wick-zones__zone {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 6px 8px;
+  border: 1px solid #1f2937;
+  border-left-width: 3px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.wick-zones__zone.is-active { border-left-color: #38bdf8; }
+.wick-zones__zone.is-armed { border-left-color: #14b8a6; }
+.wick-zones__zone.is-pending { border-left-color: #475569; }
+.wick-zones__zone.is-mitigated { border-left-color: #1f2937; opacity: 0.55; }
+
+.wick-zones__zone > span {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.wick-zones__zone b {
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+}
+
+.wick-zones__zone em {
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: #64748b;
+}
+
+.wick-zones__zone.is-active em { color: #38bdf8; }
+
+.wick-zones__zone small {
+  grid-column: 1 / -1;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.wick-zones .is-bullish { color: #22c55e; }
+.wick-zones .is-bearish { color: #ef4444; }

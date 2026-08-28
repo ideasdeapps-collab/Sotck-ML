@@ -5,6 +5,7 @@ import { toChartTime } from '../chartTime';
 import { calculateOpeningRange } from '../dayTrading/openingRange';
 import { previousDayLevels, sessionSegments } from '../dayTrading/sessions';
 import { buildIntradayPlan, zonesFromChartism, type PlanBias } from '../dayTrading/intradayPlan';
+import { buildWickSetup, detectWickZones, type WickZone } from '../priceAction/wickZones';
 import type { OverlayLayer, LinePoint, PriceLineSpec } from './layer';
 import type { Box } from './boxPrimitive';
 import type { OverlayId, OverlayState } from './registry';
@@ -47,6 +48,10 @@ const COLORS = {
   planEntry: '#38bdf8',
   planStop: '#ef4444',
   planTarget: '#22c55e',
+  // Teal/naranja a propósito: las zonas de mecha comparten pantalla con el plan
+  // intradía, y en verde/rojo se confundirían con soporte y resistencia.
+  wickDemand: '#14b8a6',
+  wickSupply: '#f97316',
 } as const;
 
 /** Every layer id an overlay can own, so toggling it off removes all of them. */
@@ -61,6 +66,7 @@ const LAYER_IDS: Record<OverlayId, string[]> = {
   levels: ['sr-levels', 'breakouts'],
   zones: ['fvg', 'order-blocks', 'liquidity'],
   priceAction: ['price-action'],
+  wickZones: ['wick-zones', 'wick-markers', 'wick-setup'],
   xgb: ['curve-xgb'],
   mlp: ['curve-mlp'],
   extended: ['curve-extended'],
@@ -156,6 +162,40 @@ function curveLine(anchorDate: string, anchorClose: number, points: CurvePoint[]
 function dedupe(points: LinePoint[]): LinePoint[] {
   const sorted = [...points].sort((a, b) => Number(a.time) - Number(b.time));
   return sorted.filter((point, index) => index === 0 || Number(point.time) !== Number(sorted[index - 1].time));
+}
+
+/**
+ * La vela que imprimió la mecha y, si el precio ya volvió, el retesteo.
+ *
+ * Solo se marca el retesteo de las zonas vivas: en las mitigadas la caja ya
+ * termina ahí, y un segundo marcador sobre cada una llenaría el gráfico de ruido.
+ */
+function wickMarkers(zones: WickZone[]): SeriesMarker<Time>[] {
+  const markers: SeriesMarker<Time>[] = [];
+
+  for (const zone of zones) {
+    const demand = zone.side === 'demand';
+
+    markers.push({
+      time: zone.time as Time,
+      position: demand ? 'belowBar' : 'aboveBar',
+      color: demand ? COLORS.wickDemand : COLORS.wickSupply,
+      shape: demand ? 'arrowUp' : 'arrowDown',
+      text: 'MECHA',
+    });
+
+    if (zone.status === 'active' && zone.retestTime !== null) {
+      markers.push({
+        time: zone.retestTime as Time,
+        position: demand ? 'belowBar' : 'aboveBar',
+        color: demand ? COLORS.wickDemand : COLORS.wickSupply,
+        shape: 'circle',
+        text: 'RETESTEO',
+      });
+    }
+  }
+
+  return markers;
 }
 
 export function paintOverlays({
@@ -349,6 +389,55 @@ export function paintOverlays({
       },
     ]);
   } else clear('plan');
+
+  // --- Mechas (zonas de rechazo) -------------------------------------------
+  // Se calcula en local sobre las velas ya cargadas, así que está disponible en
+  // cualquier temporalidad y también sin API de ML.
+  if (on('wickZones')) {
+    const zones = detectWickZones({ candles, indicators });
+
+    layer.boxes(
+      'wick-zones',
+      zones.map((zone) => {
+        const demand = zone.side === 'demand';
+        const rgb = demand ? '20,184,166' : '249,115,22';
+        const strong = zone.status === 'active' || zone.status === 'armed';
+        const fillAlpha = zone.status === 'active' ? 0.16 : zone.status === 'armed' ? 0.1 : 0.04;
+        const borderAlpha = zone.status === 'active' ? 0.75 : zone.status === 'armed' ? 0.55 : 0.28;
+
+        return {
+          from: zone.time as Time,
+          // Una zona ya consumida deja de proyectarse hacia la derecha: sigue
+          // siendo referencia histórica, pero no compite con las que aún
+          // esperan al precio.
+          to: zone.status === 'mitigated' ? ((zone.retestTime ?? zone.time) as Time) : null,
+          top: zone.top,
+          bottom: zone.bottom,
+          fill: `rgba(${rgb},${fillAlpha})`,
+          border: `rgba(${rgb},${borderAlpha})`,
+          label: `${demand ? 'MECHA COMPRA' : 'MECHA VENTA'}${zone.status === 'active' ? ' · RETESTEO' : ''}`,
+          labelAlign: demand ? 'left' : 'right',
+          dashed: !strong,
+        };
+      })
+    );
+
+    layer.markers('wick-markers', wickMarkers(zones));
+
+    const setup = buildWickSetup(zones, { candles, indicators });
+
+    layer.priceLines(
+      'wick-setup',
+      setup
+        ? [
+            { price: setup.entryMid, color: COLORS.planEntry, title: 'Entrada mecha', width: 2 },
+            { price: setup.stopLoss, color: COLORS.planStop, title: 'SL', width: 2, dashed: true },
+            { price: setup.takeProfit[0], color: COLORS.planTarget, title: 'TP1', width: 2, dashed: true },
+            { price: setup.takeProfit[1], color: COLORS.planTarget, title: 'TP2', dashed: true },
+          ]
+        : []
+    );
+  } else clear('wickZones');
 
   if (on('levels') && patterns) {
     const zones = patterns.support_resistance?.zones ?? [];

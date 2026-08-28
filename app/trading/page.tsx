@@ -9,6 +9,7 @@ import EconomicCalendar from '@/components/trading/EconomicCalendar';
 import AIPortfolioPanel from '@/components/trading/AIPortfolioPanel';
 import SignalsPanel from '@/components/trading/SignalsPanel';
 import TradePlanPanel from '@/components/trading/TradePlanPanel';
+import WickZonesPanel from '@/components/trading/WickZonesPanel';
 import SessionJournalPanel from '@/components/trading/SessionJournalPanel';
 import RegimePanel from '@/components/trading/RegimePanel';
 import './trading.css';
@@ -21,6 +22,7 @@ export default function TradingPage() {
         <ChartPanel />
         <div className="trading-grid">
           <TradePlanPanel />
+          <WickZonesPanel />
           <SignalsPanel />
           <RegimePanel />
           <TradingSimulator />
