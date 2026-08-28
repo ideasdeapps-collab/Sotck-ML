@@ -6,6 +6,7 @@ import { calculateOpeningRange } from '../dayTrading/openingRange';
 import { previousDayLevels, sessionSegments } from '../dayTrading/sessions';
 import { buildIntradayPlan, zonesFromChartism, type PlanBias } from '../dayTrading/intradayPlan';
 import { buildWickSetup, detectWickZones, type WickZone } from '../priceAction/wickZones';
+import { elliottProbabilitySeries } from '../priceAction/elliottStart';
 import type { OverlayLayer, LinePoint, PriceLineSpec } from './layer';
 import type { Box } from './boxPrimitive';
 import type { OverlayId, OverlayState } from './registry';
@@ -52,6 +53,10 @@ const COLORS = {
   // intradía, y en verde/rojo se confundirían con soporte y resistencia.
   wickDemand: '#14b8a6',
   wickSupply: '#f97316',
+  // El mismo morado que ya usa el overlay «ZigZag + Elliott», para que se lean
+  // como la misma familia.
+  elliott: '#c084fc',
+  elliottRef: 'rgba(148,163,184,0.4)',
 } as const;
 
 /** Every layer id an overlay can own, so toggling it off removes all of them. */
@@ -75,7 +80,11 @@ const LAYER_IDS: Record<OverlayId, string[]> = {
   fibonacci: ['fib-levels'],
   zigzag: ['zigzag', 'elliott'],
   sma: ['sma20', 'sma50', 'sma200'],
+  elliottStart: ['elliott-prob', 'elliott-prob-50', 'elliott-prob-70', 'elliott-waves', 'elliott-outcome'],
 };
+
+/** Panel propio del oscilador de Elliott, debajo de las velas. */
+const ELLIOTT_PANE = 1;
 
 export type PaintInput = {
   layer: OverlayLayer;
@@ -598,6 +607,80 @@ export function paintOverlays({
 
     layer.line('curve-session', dedupe(points), { color: COLORS.session, lineWidth: 2, dashed: true, title: 'Sesión ML' });
   } else clear('sessionCurve');
+
+  // --- Elliott: probabilidad de inicio -------------------------------------
+  // Local sobre las velas cargadas, en un panel propio bajo el gráfico porque
+  // 0–100 % y el precio no comparten escala.
+  if (on('elliottStart')) {
+    const { series, current } = elliottProbabilitySeries({ candles, indicators });
+
+    layer.line(
+      'elliott-prob',
+      series.map((point) => ({ time: point.time as Time, value: point.value })),
+      {
+        color: COLORS.elliott,
+        lineWidth: 2,
+        title: 'Prob. inicio Elliott',
+        pane: ELLIOTT_PANE,
+        fixedRange: { min: 0, max: 100 },
+      }
+    );
+
+    // Referencias como series planas y no como price lines: los price lines
+    // cuelgan de `anchorSeries`, que vive en el panel de las velas.
+    const edges: LinePoint[] = series.length
+      ? [
+          { time: series[0].time as Time, value: 0 },
+          { time: series[series.length - 1].time as Time, value: 0 },
+        ]
+      : [];
+
+    for (const [layerId, level] of [
+      ['elliott-prob-50', 50],
+      ['elliott-prob-70', 70],
+    ] as const) {
+      layer.line(
+        layerId,
+        edges.map((point) => ({ ...point, value: level })),
+        { color: COLORS.elliottRef, lineWidth: 1, dashed: true, pane: ELLIOTT_PANE }
+      );
+    }
+
+    const waves: SeriesMarker<Time>[] = [];
+    const outcome: SeriesMarker<Time>[] = [];
+
+    if (current) {
+      const long = current.direction === 'long';
+
+      for (const [pivot, label] of [
+        [current.wave0, '0'],
+        [current.wave1, '1'],
+        [current.wave2, '2'],
+      ] as const) {
+        waves.push({
+          time: pivot.time as Time,
+          position: pivot.type === 'high' ? 'aboveBar' : 'belowBar',
+          color: COLORS.elliott,
+          shape: 'circle',
+          text: label,
+        });
+      }
+
+      if (current.resolvedTime !== null) {
+        const confirmed = current.state === 'confirmed';
+        outcome.push({
+          time: current.resolvedTime as Time,
+          position: long ? 'belowBar' : 'aboveBar',
+          color: confirmed ? COLORS.bullish : COLORS.bearish,
+          shape: confirmed ? (long ? 'arrowUp' : 'arrowDown') : 'square',
+          text: confirmed ? 'ONDA 3 ✓' : 'INVALIDADO ✗',
+        });
+      }
+    }
+
+    layer.markers('elliott-waves', waves);
+    layer.markers('elliott-outcome', outcome);
+  } else clear('elliottStart');
 
   // --- Technical (from /technical) ----------------------------------------
   const technical = remote.technical?.ok ? remote.technical.data : null;

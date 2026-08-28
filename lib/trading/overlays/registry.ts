@@ -32,7 +32,8 @@ export type OverlayId =
   | 'sessionCurve'
   | 'fibonacci'
   | 'zigzag'
-  | 'sma';
+  | 'sma'
+  | 'elliottStart';
 
 export type OverlayGroup = 'Plan de trading' | 'Indicadores' | 'Day trading' | 'Estructura' | 'Curvas predictivas';
 
@@ -73,6 +74,7 @@ export const OVERLAYS: OverlayDef[] = [
   { id: 'sessionCurve', label: 'Curva de sesión (15m)', group: 'Curvas predictivas', source: 'session', timeframes: ['15m'], capability: 'intraday', hint: 'Resto de la sesión hasta las 16:00 ET' },
   { id: 'fibonacci', label: 'Fibonacci', group: 'Curvas predictivas', source: 'technical', timeframes: ['1d'], capability: 'xgb', hint: 'Retrocesos y extensiones del swing dominante' },
   { id: 'zigzag', label: 'ZigZag + Elliott', group: 'Curvas predictivas', source: 'technical', timeframes: ['1d'], capability: 'xgb', hint: 'Estructura de swings y conteo de ondas (experimental)' },
+  { id: 'elliottStart', label: 'Elliott · probabilidad de inicio', group: 'Curvas predictivas', source: 'local', hint: 'Probabilidad vela a vela de que arranque un impulso 1-2-3, y si el recuento se confirmó al superar la onda 1' },
   { id: 'sma', label: 'SMA 20/50/200', group: 'Curvas predictivas', source: 'technical', timeframes: ['1d'], capability: 'xgb', hint: 'Medias simples calculadas por la API' },
 ];
 
@@ -105,6 +107,7 @@ export const DEFAULT_OVERLAYS: OverlayState = {
   fibonacci: false,
   zigzag: false,
   sma: false,
+  elliottStart: false,
 };
 
 /** Why an overlay cannot be shown right now, or null when it can. */

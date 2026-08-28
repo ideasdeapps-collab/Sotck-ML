@@ -20,6 +20,9 @@ import { BoxPrimitive, type Box } from './boxPrimitive';
  * previous single-useEffect version effectively did on every ticker change.
  */
 
+/** Alto inicial, en píxeles, de cada panel añadido bajo las velas. */
+const EXTRA_PANE_HEIGHT = 120;
+
 export type LinePoint = { time: Time; value: number };
 
 export type LineOptions = {
@@ -27,6 +30,10 @@ export type LineOptions = {
   lineWidth?: 1 | 2 | 3 | 4;
   dashed?: boolean;
   title?: string;
+  /** Panel donde vive la serie. 0 (por defecto) es el de las velas. */
+  pane?: number;
+  /** Fija la escala del panel en lugar de dejar que se autoajuste. */
+  fixedRange?: { min: number; max: number };
 };
 
 export type PriceLineSpec = {
@@ -51,6 +58,8 @@ export function createOverlayLayer(
   anchorSeries: ISeriesApi<'Candlestick', Time>
 ): OverlayLayer {
   const lines = new Map<string, ISeriesApi<'Line', Time>>();
+  /** Panel de cada serie, para poder recogerlo cuando se queda vacío. */
+  const linePanes = new Map<string, number>();
   const priceLines = new Map<string, IPriceLine[]>();
   const boxLayers = new Map<string, BoxPrimitive>();
   const markerGroups = new Map<string, SeriesMarker<Time>[]>();
@@ -76,8 +85,20 @@ export function createOverlayLayer(
   function removeLine(id: string) {
     const series = lines.get(id);
     if (!series) return;
+
     chart.removeSeries(series);
     lines.delete(id);
+
+    const pane = linePanes.get(id);
+    linePanes.delete(id);
+
+    // Un panel extra sin series deja una franja vacía debajo de las velas, así
+    // que se recoge en cuanto sale la última: apagar el overlay tiene que
+    // devolver el gráfico exactamente a como estaba.
+    if (pane === undefined || pane === 0) return;
+
+    const panes = chart.panes();
+    if (pane < panes.length && panes[pane].getSeries().length === 0) chart.removePane(pane);
   }
 
   function removePriceLines(id: string) {
@@ -103,18 +124,39 @@ export function createOverlayLayer(
         return;
       }
 
+      const pane = options.pane ?? 0;
       let series = lines.get(id);
+
       if (!series) {
-        series = chart.addSeries(LineSeries, {
-          color: options.color,
-          lineWidth: options.lineWidth ?? 2,
-          lineStyle: options.dashed ? LineStyle.Dashed : LineStyle.Solid,
-          priceLineVisible: false,
-          lastValueVisible: false,
-          crosshairMarkerVisible: false,
-          title: options.title ?? '',
-        });
+        series = chart.addSeries(
+          LineSeries,
+          {
+            color: options.color,
+            lineWidth: options.lineWidth ?? 2,
+            lineStyle: options.dashed ? LineStyle.Dashed : LineStyle.Solid,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            crosshairMarkerVisible: false,
+            title: options.title ?? '',
+            ...(options.fixedRange
+              ? {
+                  autoscaleInfoProvider: () => ({
+                    priceRange: { minValue: options.fixedRange!.min, maxValue: options.fixedRange!.max },
+                  }),
+                }
+              : {}),
+          },
+          pane
+        );
+
         lines.set(id, series);
+        linePanes.set(id, pane);
+
+        // Un oscilador no necesita la mitad del gráfico; se fija al crearlo y
+        // el usuario puede seguir arrastrando el separador.
+        if (pane > 0 && chart.panes()[pane]?.getSeries().length === 1) {
+          chart.panes()[pane].setHeight(EXTRA_PANE_HEIGHT);
+        }
       }
 
       series.setData(points);
@@ -185,6 +227,7 @@ export function createOverlayLayer(
       markerApi = null;
       markerGroups.clear();
       lines.clear();
+      linePanes.clear();
       priceLines.clear();
       boxLayers.clear();
     },

@@ -17,6 +17,7 @@ import { createOverlayLayer, type OverlayLayer } from '@/lib/trading/overlays/la
 import { paintOverlays } from '@/lib/trading/overlays/paint';
 import { loadRemoteOverlays, requiredSources, type RemoteOverlayData } from '@/lib/trading/overlays/remoteData';
 import { OVERLAYS, blockedReason, type OverlayId } from '@/lib/trading/overlays/registry';
+import { calibrate, elliottProbabilitySeries } from '@/lib/trading/priceAction/elliottStart';
 import OverlayControls from './OverlayControls';
 import type { Candle } from '@/lib/trading/marketData';
 
@@ -241,6 +242,50 @@ export default function ChartPanel() {
     });
   }, [candles, overlays, remote, allowed, planBias]);
 
+  /**
+   * Resumen del oscilador de Elliott.
+   *
+   * Llama a las mismas funciones puras que `paintOverlays`, igual que
+   * `TradePlanPanel` comparte `buildIntradayPlan` con su overlay: la leyenda y la
+   * curva no pueden decir cosas distintas. Solo se calcula con el overlay
+   * encendido, que es cuando hay algo que explicar.
+   */
+  const elliott = useMemo(() => {
+    if (!overlays.elliottStart || !allowed('elliottStart') || candles.length === 0) return null;
+
+    const series = candles as Candle[];
+    const { candidates, current } = elliottProbabilitySeries({
+      candles: series,
+      indicators: calculateIndicators(series),
+    });
+
+    return current ? { current, buckets: calibrate(candidates) } : null;
+  }, [candles, overlays.elliottStart, allowed]);
+
+  const elliottLegend = (() => {
+    if (!elliott) return '';
+
+    const { current, buckets } = elliott;
+    const state =
+      current.state === 'confirmed'
+        ? 'confirmado — onda 3 en marcha'
+        : current.state === 'invalidated'
+          ? 'invalidado'
+          : 'formando';
+    const direction = current.direction === 'long' ? 'alcista' : 'bajista';
+
+    const history = buckets
+      .filter((bucket) => bucket.total > 0)
+      .map((bucket) => `${bucket.confirmed}/${bucket.total} confirmados (≥${bucket.threshold}%)`)
+      .join(' · ');
+
+    return (
+      `Elliott · ${current.probability}% · ${state} (${direction}) · ` +
+      `dispara en ${current.trigger.toFixed(2)}, invalida en ${current.invalidation.toFixed(2)}` +
+      (history ? ` — histórico: ${history}` : ' — sin histórico suficiente')
+    );
+  })();
+
   /** Failures that the toggles alone cannot explain. */
   const overlayErrors = Object.entries(remote)
     .filter(([, result]) => result && !result.ok)
@@ -274,6 +319,8 @@ export default function ChartPanel() {
       ) : (
         <p className={isDemo ? 'chart-panel__warning' : 'chart-panel__meta'}>Source: {source || 'loading…'}</p>
       )}
+
+      {elliottLegend && <p className="chart-panel__elliott">{elliottLegend}</p>}
 
       {overlayErrors.length > 0 && (
         <p className="chart-panel__error">Overlays sin datos — {overlayErrors.join(' · ')}</p>
