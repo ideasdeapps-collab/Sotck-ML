@@ -81,6 +81,20 @@ def test_ret_15m_mira_quince_barras_atras():
     assert fila["ret_15m"] == pytest.approx(esperado)
 
 
+def test_el_target_no_cruza_el_limite_entre_sesiones():
+    # El riesgo real del módulo: si `target` cruzara el cambio de día, la última
+    # barra del día 1 aprendería el retorno de apertura del día 2 — fuga pura.
+    df = pd.concat([_session("2026-08-27", 30), _session("2026-08-28", 30, 200.0)], ignore_index=True)
+    out = add_1m_features(df)
+
+    dia_1 = out[out["day"] == pd.Timestamp("2026-08-27").date()]
+    assert np.isnan(dia_1["target"].iloc[-1])
+
+    # Y la penúltima del día 1 sí tiene target, para que el test no pase por
+    # el motivo equivocado (que todo fuera NaN).
+    assert np.isfinite(dia_1["target"].iloc[-2])
+
+
 def test_filter_regular_session_descarta_premarket_y_afterhours():
     idx = pd.date_range("2026-08-28 04:00", periods=24 * 60, freq="1min", tz="America/New_York")
     df = pd.DataFrame({"dt_et": idx, "open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0, "volume": 1.0})

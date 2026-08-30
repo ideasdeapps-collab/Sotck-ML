@@ -17,7 +17,8 @@ FEATURES (15): hora del día (sin/cos), barras restantes, retorno desde la
     barras de un minuto son cinco minutos de memoria, que a esta granularidad es
     casi solo ruido.
 
-BLINDAJE: clamp del retorno a ±K·σ.
+BLINDAJE: se calcula y persiste sigma_1m junto a clamp_k en la metadata para que
+    la inferencia (API) aplique el clamp a ±K·σ sobre los retornos predichos.
 
 Ventana: 60 días de barras de 1 min (plan Starter de Polygon, paginado).
 
