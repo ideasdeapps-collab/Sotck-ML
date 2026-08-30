@@ -1,14 +1,16 @@
 import type { SeriesMarker, Time } from 'lightweight-charts';
 import type { Candle } from '../marketData';
 import type { Indicators } from '../indicators';
-import { toChartTime } from '../chartTime';
+import { snapIndex, toChartTime } from '../chartTime';
 import { calculateOpeningRange } from '../dayTrading/openingRange';
 import { previousDayLevels, sessionSegments } from '../dayTrading/sessions';
 import { buildIntradayPlan, zonesFromChartism, type PlanBias } from '../dayTrading/intradayPlan';
 import { buildWickSetup, detectWickZones, type WickZone } from '../priceAction/wickZones';
 import { elliottProbabilitySeries } from '../priceAction/elliottStart';
+import { bestOutcomePerPeak, buildSignalCallouts } from '../signals/alerts';
 import type { OverlayLayer, LinePoint, PriceLineSpec } from './layer';
 import type { Box } from './boxPrimitive';
+import type { Callout } from './calloutPrimitive';
 import type { OverlayId, OverlayState } from './registry';
 import type { RemoteOverlayData } from './remoteData';
 import type { CurvePoint } from '@/types/trading';
@@ -52,6 +54,15 @@ const COLORS = {
   // Ámbar: el copiloto se dibuja sobre el mismo plan que lo originó, así que
   // necesita un color que no se confunda con la entrada, el stop ni el objetivo.
   copilot: '#fbbf24',
+  // Los mismos verde y rojo del resto del Lab: una señal de compra tiene que
+  // leerse igual que una vela alcista.
+  signalBuy: '#22c55e',
+  signalSell: '#ef4444',
+  // Las señales que no acompañan al sesgo diario van en un tono apagado, no
+  // translúcidas: con transparencia las velas se cuelan por detrás y el texto
+  // del bocadillo deja de leerse.
+  signalBuyMuted: '#14532d',
+  signalSellMuted: '#7f1d1d',
   // Teal/naranja a propósito: las zonas de mecha comparten pantalla con el plan
   // intradía, y en verde/rojo se confundirían con soporte y resistencia.
   wickDemand: '#14b8a6',
@@ -66,6 +77,7 @@ const COLORS = {
 const LAYER_IDS: Record<OverlayId, string[]> = {
   plan: ['plan-support', 'plan-resistance', 'plan-entry-zone', 'plan-levels', 'plan-entry-marker'],
   copilot: ['copilot-levels', 'copilot-markers'],
+  signalAlerts: ['signal-callouts'],
   ema: ['ema20', 'ema50'],
   vwap: ['vwap', 'vwap+1', 'vwap-1', 'vwap+2', 'vwap-2'],
   bollinger: ['bb-upper', 'bb-lower'],
@@ -118,42 +130,13 @@ export type CopilotOverlay = {
   fills: { time: number; kind: 'open' | 'close'; label: string; direction: 'long' | 'short' }[];
 };
 
-/**
- * Maps a foreign timestamp onto the bar that contains it.
- *
- * The ML API fetches its own bars from Polygon, so an intraday marker can land
- * a few seconds off the chart's bar boundary — and lightweight-charts silently
- * drops anything that is not on the time scale. Snapping to the last bar at or
- * before the timestamp is what makes the structure overlays actually appear.
- */
+/** `snapIndex` sobre las velas del gráfico, devuelto ya como `Time`. */
 function snapper(candles: Candle[]) {
   const times = candles.map((candle) => candle.time);
 
   return (value: string | number): Time | null => {
-    let target: number;
-    try {
-      target = Number(toChartTime(value));
-    } catch {
-      return null;
-    }
-
-    if (times.length === 0 || target < times[0]) return null;
-
-    let low = 0;
-    let high = times.length - 1;
-    let found = -1;
-
-    while (low <= high) {
-      const mid = (low + high) >> 1;
-      if (times[mid] <= target) {
-        found = mid;
-        low = mid + 1;
-      } else {
-        high = mid - 1;
-      }
-    }
-
-    return found === -1 ? null : (times[found] as Time);
+    const index = snapIndex(times, value);
+    return index === null ? null : (times[index] as Time);
   };
 }
 
@@ -461,6 +444,51 @@ export function paintOverlays({
         .filter((marker): marker is SeriesMarker<Time> => marker !== null)
     );
   } else clear('copilot');
+
+  // --- Señales de compra y venta -------------------------------------------
+  // Las alertas que `api/signals.py` ya emite, ancladas a su vela: dónde
+  // disparó, si estaba alineada con el sesgo diario, y lo que hizo el precio
+  // después. Hasta ahora solo se veían como lista en `SignalsPanel`.
+  const signals = remote.signals?.ok ? remote.signals.data : null;
+
+  if (on('signalAlerts') && signals) {
+    const callouts = buildSignalCallouts(signals.alerts ?? [], candles);
+
+    const bubbles: Callout[] = callouts.map((signal) => {
+      const buy = signal.direction === 'buy';
+      const vivid = buy ? COLORS.signalBuy : COLORS.signalSell;
+      const muted = buy ? COLORS.signalBuyMuted : COLORS.signalSellMuted;
+
+      return {
+        time: signal.time as Time,
+        // Anclado al extremo de la vela, para que el globo no la tape.
+        price: buy ? candles[signal.index].low : candles[signal.index].high,
+        text: signal.label,
+        sub: signal.strength ? `${signal.trigger} · ${signal.strength}` : signal.trigger,
+        fill: signal.aligned ? vivid : muted,
+        textColor: signal.aligned ? '#06130a' : '#e2e8f0',
+        placement: buy ? 'below' : 'above',
+      };
+    });
+
+    // El recorrido posterior, sobre el extremo que lo produjo — el
+    // «Profit +159%» del gráfico de referencia.
+    for (const signal of bestOutcomePerPeak(callouts)) {
+      const move = signal.followThrough as number;
+      bubbles.push({
+        time: signal.peakTime as Time,
+        price: signal.peakPrice as number,
+        text: `${move >= 0 ? '+' : ''}${move.toFixed(1)}%`,
+        fill: move >= 0 ? COLORS.signalBuy : COLORS.signalSell,
+        textColor: '#06130a',
+        placement: signal.direction === 'buy' ? 'above' : 'below',
+      });
+    }
+
+    // Sin marcador de flecha: iría justo donde el bocadillo apoya su pico, así
+    // que quedaría tapado siempre. El propio pico ya señala la vela exacta.
+    layer.callouts('signal-callouts', bubbles);
+  } else clear('signalAlerts');
 
   // --- Mechas (zonas de rechazo) -------------------------------------------
   // Se calcula en local sobre las velas ya cargadas, así que está disponible en

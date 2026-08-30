@@ -78,6 +78,44 @@ export function toChartTime(value: string | number): UTCTimestamp {
   return Math.floor(parsed / 1000) as UTCTimestamp;
 }
 
+/**
+ * Índice de la vela que contiene `value`, o null si cae antes de la primera.
+ *
+ * La API de ML pide sus propias barras a Polygon, así que un marcador intradía
+ * puede caer unos segundos fuera del límite de la vela del gráfico — y
+ * lightweight-charts descarta en silencio cualquier tiempo que no esté en su
+ * escala. Ajustar a la última barra en o antes del valor es lo que hace que los
+ * overlays de estructura aparezcan.
+ *
+ * `times` tiene que venir ordenado ascendente, como llegan las velas.
+ */
+export function snapIndex(times: number[], value: string | number): number | null {
+  let target: number;
+  try {
+    target = Number(toChartTime(value));
+  } catch {
+    return null;
+  }
+
+  if (times.length === 0 || target < times[0]) return null;
+
+  let low = 0;
+  let high = times.length - 1;
+  let found = -1;
+
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (times[mid] <= target) {
+      found = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  return found === -1 ? null : found;
+}
+
 type EtParts = { date: string; hour: number; minute: number; minutesOfDay: number };
 
 /** Calendar date and wall-clock time in New York for an epoch-seconds value. */

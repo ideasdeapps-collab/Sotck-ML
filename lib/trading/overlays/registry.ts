@@ -11,11 +11,12 @@ import type { TickerCapabilities } from '@/types/trading';
  * source, so enabling both Fibonacci and ZigZag costs one request, not two.
  */
 
-export type OverlaySource = 'local' | 'xgb' | 'mlp' | 'extended' | 'forecast' | 'session' | 'technical' | 'patterns' | 'intraday';
+export type OverlaySource = 'local' | 'xgb' | 'mlp' | 'extended' | 'forecast' | 'session' | 'technical' | 'patterns' | 'intraday' | 'signals';
 
 export type OverlayId =
   | 'plan'
   | 'copilot'
+  | 'signalAlerts'
   | 'ema'
   | 'vwap'
   | 'bollinger'
@@ -54,6 +55,7 @@ const INTRADAY = ['1m', '5m', '15m', '1h'];
 
 export const OVERLAYS: OverlayDef[] = [
   { id: 'plan', label: 'Plan intradía (S/R + entrada/TP/SL)', group: 'Plan de trading', source: 'intraday', timeframes: INTRADAY, hint: 'Zonas de soporte y resistencia, zona de entrada, TP1/TP2 y stop loss derivados de los niveles con más toques' },
+  { id: 'signalAlerts', label: 'Señales de compra y venta', group: 'Plan de trading', source: 'signals', timeframes: INTRADAY, capability: 'xgb', hint: 'Alertas de /signals sobre el gráfico: dónde disparó la señal, si estaba alineada con el sesgo diario, y el recorrido que hizo el precio después' },
   { id: 'copilot', label: 'Copiloto · operaciones en papel', group: 'Plan de trading', source: 'local', hint: 'Entradas y salidas que el copiloto ejecutó en la cuenta simulada, y el stop y el objetivo de la posición que tenga viva' },
 
   { id: 'ema', label: 'EMA 20/50', group: 'Indicadores', source: 'local', hint: 'Medias exponenciales sobre las velas cargadas' },
@@ -92,6 +94,7 @@ export type OverlayState = Record<OverlayId, boolean>;
 export const DEFAULT_OVERLAYS: OverlayState = {
   plan: false,
   copilot: false,
+  signalAlerts: false,
   ema: false,
   vwap: false,
   bollinger: false,

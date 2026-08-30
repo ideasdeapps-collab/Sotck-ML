@@ -5,6 +5,7 @@ import {
   fetchMlpCurve,
   fetchPatterns,
   fetchSessionCurve,
+  fetchSignals,
   fetchTechnical,
   fetchXgbCurve,
 } from '../mlApi';
@@ -16,6 +17,7 @@ import type {
   PatternsResponse,
   PredictCurve,
   SessionPrediction,
+  SignalsResponse,
   TechnicalResponse,
 } from '@/types/trading';
 
@@ -29,6 +31,7 @@ export type RemoteOverlayData = {
   technical?: MlResult<TechnicalResponse>;
   patterns?: MlResult<PatternsResponse>;
   intraday?: MlResult<IntradayResponse>;
+  signals?: MlResult<SignalsResponse>;
 };
 
 /** Which remote sources the currently enabled, currently allowed overlays need. */
@@ -79,6 +82,8 @@ export async function loadRemoteOverlays(
         return ['patterns', await fetchPatterns(ticker, interval, interval >= 15 ? 2 : 1)];
       case 'intraday':
         return ['intraday', await fetchIntraday(ticker, interval, interval >= 15 ? 2 : 1)];
+      case 'signals':
+        return ['signals', await fetchSignals(ticker, interval, interval >= 15 ? 2 : 1)];
       default:
         return [source, undefined];
     }
