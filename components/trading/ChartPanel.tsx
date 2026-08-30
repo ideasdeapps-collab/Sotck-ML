@@ -336,6 +336,31 @@ export default function ChartPanel() {
     );
   })();
 
+  /**
+   * Avisos de la curva de 1 minuto.
+   *
+   * El retraso del plan Starter y una exactitud direccional en torno al 50 %
+   * cambian por completo cómo hay que leer esa línea, así que van donde se lee
+   * — no enterrados en el JSON de la respuesta.
+   */
+  const oneMinuteLegend = (() => {
+    const result = remote.oneMinute;
+    if (!overlays.intraday1m || !allowed('intraday1m') || !result?.ok) return '';
+
+    const data = result.data;
+    const hora = new Date(data.last_real_time).toLocaleTimeString('es-ES', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const acierto = data.model_meta?.directional_accuracy;
+
+    return (
+      `Curva ML 1m · última barra real ${hora} · +${data.horizon_min} min` +
+      (acierto ? ` · acierto direccional ${(acierto * 100).toFixed(0)}%` : '') +
+      ' — datos con ~15 min de retraso (plan Starter); contexto, no señal de entrada'
+    );
+  })();
+
   /** Failures that the toggles alone cannot explain. */
   const overlayErrors = Object.entries(remote)
     .filter(([, result]) => result && !result.ok)
@@ -371,6 +396,7 @@ export default function ChartPanel() {
       )}
 
       {elliottLegend && <p className="chart-panel__elliott">{elliottLegend}</p>}
+      {oneMinuteLegend && <p className="chart-panel__onemin">{oneMinuteLegend}</p>}
 
       {overlayErrors.length > 0 && (
         <p className="chart-panel__error">Overlays sin datos — {overlayErrors.join(' · ')}</p>
