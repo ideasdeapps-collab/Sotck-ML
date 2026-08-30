@@ -25,6 +25,14 @@ export default function TradingSidebar() {
     removeFromWatchlist,
   } = useTradingStore();
 
+  /**
+   * En un teléfono la sidebar va arriba y a todo el ancho. Con modos, capital y
+   * el botón de sesión desplegados hay que hacer varias pantallas de scroll
+   * antes de ver una vela, así que se pliegan y el buscador y la watchlist se
+   * quedan siempre a mano. Por encima de 640px el CSS lo muestra todo y esconde
+   * el botón, así que en escritorio este estado no hace nada.
+   */
+  const [showMore, setShowMore] = useState(false);
   const [draft, setDraft] = useState(ticker);
   const [capitalDraft, setCapitalDraft] = useState(String(capital));
   const [capitalNote, setCapitalNote] = useState("");
@@ -121,37 +129,49 @@ export default function TradingSidebar() {
         ))}
       </div>
 
-      <h3>Market Mode</h3>
-      <div className="trading-sidebar__modes">
-        {MODES.map((option) => (
-          <label key={option}>
-            <input type="radio" name="market-mode" checked={mode === option} onChange={() => setMode(option)} />
-            {option}
-          </label>
-        ))}
-      </div>
-
-      <h3>Capital</h3>
-      <div className="trading-sidebar__capital">
-        <span>$</span>
-        <input
-          value={capitalDraft}
-          onChange={(event) => setCapitalDraft(event.target.value)}
-          onBlur={commitCapital}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") (event.target as HTMLInputElement).blur();
-          }}
-          inputMode="decimal"
-          aria-label="Starting capital"
-        />
-      </div>
-      {capitalNote && <p className="trading-sidebar__note">{capitalNote}</p>}
-
-      <button type="button" className="trading-sidebar__cta" onClick={startAISession} disabled={loading}>
-        {loading ? "ANALYZING…" : session ? "REFRESH AI SESSION" : "START AI SESSION"}
+      <button
+        type="button"
+        className="trading-sidebar__more-toggle"
+        onClick={() => setShowMore((value) => !value)}
+        aria-expanded={showMore}
+        aria-controls="trading-sidebar-more"
+      >
+        {showMore ? "Menos controles ▴" : "Más controles ▾"}
       </button>
 
-      {error && <p className="trading-sidebar__error">{error}</p>}
+      <div className="trading-sidebar__more" id="trading-sidebar-more" data-open={showMore}>
+        <h3>Market Mode</h3>
+        <div className="trading-sidebar__modes">
+          {MODES.map((option) => (
+            <label key={option}>
+              <input type="radio" name="market-mode" checked={mode === option} onChange={() => setMode(option)} />
+              {option}
+            </label>
+          ))}
+        </div>
+
+        <h3>Capital</h3>
+        <div className="trading-sidebar__capital">
+          <span>$</span>
+          <input
+            value={capitalDraft}
+            onChange={(event) => setCapitalDraft(event.target.value)}
+            onBlur={commitCapital}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") (event.target as HTMLInputElement).blur();
+            }}
+            inputMode="decimal"
+            aria-label="Starting capital"
+          />
+        </div>
+        {capitalNote && <p className="trading-sidebar__note">{capitalNote}</p>}
+
+        <button type="button" className="trading-sidebar__cta" onClick={startAISession} disabled={loading}>
+          {loading ? "ANALYZING…" : session ? "REFRESH AI SESSION" : "START AI SESSION"}
+        </button>
+
+        {error && <p className="trading-sidebar__error">{error}</p>}
+      </div>
 
       {signal && (
         <section className="trading-sidebar__signal">
