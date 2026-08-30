@@ -1,10 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useTradingStore } from '@/lib/trading/tradingStore';
 import { calculateIndicators } from '@/lib/trading/indicators';
-import { fetchIntraday } from '@/lib/trading/mlApi';
-import { intervalFor } from '@/lib/trading/overlays/remoteData';
+import { useIntradayStructure } from '@/lib/trading/dayTrading/useIntradayStructure';
 import {
   buildIntradayPlan,
   zonesFromChartism,
@@ -15,19 +14,17 @@ import { planTrade } from '@/lib/trading/dayTrading/positionSize';
 import { recordPlan } from '@/lib/trading/dayTrading/journal';
 import PlanAlerts from './PlanAlerts';
 import type { Candle } from '@/lib/trading/marketData';
-import type { IntradayResponse } from '@/types/trading';
 
 /**
  * The numbers behind the plan drawn on the chart.
  *
  * It calls `buildIntradayPlan` with the same candles and the same `/intraday`
  * response the overlay uses, so the panel and the chart cannot show different
- * levels. Fetching its own copy (like SignalsPanel and RegimePanel already do)
- * keeps it working while the chart overlay is switched off; the `/api/ml` proxy
- * caches `/intraday` for 30s, so it is not a second round trip.
+ * levels. The structure comes from `useIntradayStructure`, shared with the
+ * copilot, so the panel keeps working while the chart overlay is switched off
+ * without either of them fetching a second copy.
  */
 
-const INTRADAY = ['1m', '5m', '15m', '1h'];
 const BIASES: { id: PlanBias; label: string }[] = [
   { id: 'auto', label: 'Auto' },
   { id: 'long', label: 'Largo' },
@@ -71,37 +68,7 @@ export default function TradePlanPanel() {
   const { ticker, timeframe, candles, capital, planBias, setPlanBias, riskPerTrade, setRiskPerTrade } =
     useTradingStore();
 
-  const [intraday, setIntraday] = useState<IntradayResponse | null>(null);
-  const [reason, setReason] = useState('');
-  const [loading, setLoading] = useState(true);
-
-  const intradayTimeframe = INTRADAY.includes(timeframe);
-
-  useEffect(() => {
-    if (!intradayTimeframe) {
-      setIntraday(null);
-      setLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setLoading(true);
-    setIntraday(null);
-    setReason('');
-
-    const interval = intervalFor(timeframe);
-
-    fetchIntraday(ticker, interval, interval >= 15 ? 2 : 1).then((result) => {
-      if (cancelled) return;
-      if (result.ok) setIntraday(result.data);
-      else setReason(result.reason);
-      setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [ticker, timeframe, intradayTimeframe]);
+  const { intraday, reason, loading, supported: intradayTimeframe } = useIntradayStructure(ticker, timeframe);
 
   const plan = useMemo(() => {
     const series = candles as Candle[];

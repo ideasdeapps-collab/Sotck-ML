@@ -49,6 +49,9 @@ const COLORS = {
   planEntry: '#38bdf8',
   planStop: '#ef4444',
   planTarget: '#22c55e',
+  // Ámbar: el copiloto se dibuja sobre el mismo plan que lo originó, así que
+  // necesita un color que no se confunda con la entrada, el stop ni el objetivo.
+  copilot: '#fbbf24',
   // Teal/naranja a propósito: las zonas de mecha comparten pantalla con el plan
   // intradía, y en verde/rojo se confundirían con soporte y resistencia.
   wickDemand: '#14b8a6',
@@ -62,6 +65,7 @@ const COLORS = {
 /** Every layer id an overlay can own, so toggling it off removes all of them. */
 const LAYER_IDS: Record<OverlayId, string[]> = {
   plan: ['plan-support', 'plan-resistance', 'plan-entry-zone', 'plan-levels', 'plan-entry-marker'],
+  copilot: ['copilot-levels', 'copilot-markers'],
   ema: ['ema20', 'ema50'],
   vwap: ['vwap', 'vwap+1', 'vwap-1', 'vwap+2', 'vwap-2'],
   bollinger: ['bb-upper', 'bb-lower'],
@@ -96,6 +100,22 @@ export type PaintInput = {
   remote: RemoteOverlayData;
   /** Direction the trade plan is drawn for; 'auto' derives it from confluence. */
   bias?: PlanBias;
+  /** What the copilot has done on this ticker, for the `copilot` overlay. */
+  copilot?: CopilotOverlay;
+};
+
+/**
+ * Lo que el overlay del copiloto necesita saber.
+ *
+ * Estructural a propósito: `paint.ts` no importa el motor ni el store del
+ * copiloto — recibe una foto y la dibuja. Así el gráfico sigue siendo una
+ * función de sus entradas y se puede pintar en un test sin arrancar nada.
+ */
+export type CopilotOverlay = {
+  /** Posición viva del copiloto en este ticker, si la hay. */
+  position: { entry: number; stop: number; target: number; target2?: number; side: 'long' | 'short' } | null;
+  /** Ejecuciones sobre las velas cargadas. */
+  fills: { time: number; kind: 'open' | 'close'; label: string; direction: 'long' | 'short' }[];
 };
 
 /**
@@ -215,6 +235,7 @@ export function paintOverlays({
   allowed,
   remote,
   bias = 'auto',
+  copilot,
 }: PaintInput): void {
   const snap = snapper(candles);
   const last = candles[candles.length - 1];
@@ -398,6 +419,48 @@ export function paintOverlays({
       },
     ]);
   } else clear('plan');
+
+  // --- Copiloto -------------------------------------------------------------
+  // Lo que la cuenta simulada tiene abierto y lo que ya ejecutó. A diferencia
+  // del plan, esto no es una propuesta: son órdenes que ocurrieron, así que se
+  // dibujan aunque el overlay del plan esté apagado.
+  if (on('copilot') && copilot) {
+    const { position, fills } = copilot;
+
+    layer.priceLines(
+      'copilot-levels',
+      position
+        ? [
+            { price: position.entry, color: COLORS.copilot, title: 'Copiloto · entrada', width: 2 },
+            { price: position.stop, color: COLORS.planStop, title: 'Copiloto · SL', width: 2, dashed: true },
+            { price: position.target, color: COLORS.planTarget, title: 'Copiloto · TP1', width: 2, dashed: true },
+            ...(position.target2 !== undefined
+              ? [{ price: position.target2, color: COLORS.planTarget, title: 'Copiloto · TP2', dashed: true }]
+              : []),
+          ]
+        : []
+    );
+
+    layer.markers(
+      'copilot-markers',
+      fills
+        .map((fill) => {
+          const time = snap(fill.time);
+          if (time === null) return null;
+
+          const above = fill.kind === 'open' ? fill.direction === 'short' : fill.direction === 'long';
+
+          return {
+            time,
+            position: above ? 'aboveBar' : 'belowBar',
+            color: COLORS.copilot,
+            shape: above ? 'arrowDown' : 'arrowUp',
+            text: fill.label,
+          } as SeriesMarker<Time>;
+        })
+        .filter((marker): marker is SeriesMarker<Time> => marker !== null)
+    );
+  } else clear('copilot');
 
   // --- Mechas (zonas de rechazo) -------------------------------------------
   // Se calcula en local sobre las velas ya cargadas, así que está disponible en

@@ -1,26 +1,28 @@
 "use client";
 
 import { useTradingStore } from "@/lib/trading/tradingStore";
-import { getPortfolio } from "@/lib/trading/paperEngine";
+import { calculatePnL, usePortfolio } from "@/lib/trading/paperEngine";
 
 function money(value: number) {
   return value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export default function PerformancePanel() {
-  // portfolioVersion is the re-render trigger: the paper engine holds the
-  // positions, the store only tracks that they changed.
-  const { capital, portfolioVersion, signal } = useTradingStore();
-  const portfolio = getPortfolio();
-  void portfolioVersion;
+  const { capital, ticker, candles } = useTradingStore();
+  const portfolio = usePortfolio();
 
   const balance = portfolio.positions.length === 0 && portfolio.history.length === 0 ? capital : portfolio.balance;
-  const mark = Number(signal?.entry) || 0;
+  // Only the ticker on screen has a live price; anything else is marked at its
+  // own entry, which is the honest "unknown" rather than a stale quote.
+  const mark = Number(candles[candles.length - 1]?.close) || 0;
 
-  const openValue = portfolio.positions.reduce(
-    (total, position) => total + position.shares * (mark || position.entry),
-    0
-  );
+  // The notional was deducted when the position opened, so it comes back into
+  // equity alongside the open result — and that result is direction aware, or a
+  // short would show a loss exactly when it is winning.
+  const openValue = portfolio.positions.reduce((total, position) => {
+    const price = position.ticker === ticker && mark ? mark : position.entry;
+    return total + position.shares * position.entry + calculatePnL(position, price);
+  }, 0);
 
   const equity = balance + openValue;
   const realized = portfolio.history.reduce((total, trade) => total + trade.pnl, 0);

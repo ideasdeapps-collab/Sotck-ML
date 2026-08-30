@@ -18,6 +18,9 @@ import { paintOverlays } from '@/lib/trading/overlays/paint';
 import { loadRemoteOverlays, requiredSources, type RemoteOverlayData } from '@/lib/trading/overlays/remoteData';
 import { OVERLAYS, blockedReason, type OverlayId } from '@/lib/trading/overlays/registry';
 import { calibrate, elliottProbabilitySeries } from '@/lib/trading/priceAction/elliottStart';
+import { useCopilot } from '@/lib/trading/copilot/store';
+import { ownedBy, usePortfolio } from '@/lib/trading/paperEngine';
+import type { CopilotOverlay } from '@/lib/trading/overlays/paint';
 import OverlayControls from './OverlayControls';
 import type { Candle } from '@/lib/trading/marketData';
 
@@ -41,6 +44,7 @@ export default function ChartPanel() {
     setCandles,
     setLive,
     setDataError,
+    setDataSource,
     candles,
     overlays,
     planBias,
@@ -48,6 +52,9 @@ export default function ChartPanel() {
     apiReachable,
     setCapabilities,
   } = useTradingStore();
+
+  const copilotState = useCopilot();
+  const portfolio = usePortfolio();
 
   const [source, setSource] = useState('');
   const [isDemo, setIsDemo] = useState(false);
@@ -137,6 +144,7 @@ export default function ChartPanel() {
           const reason = data?.note || data?.error || 'No candles returned';
           setError(reason);
           setDataError(reason);
+          setDataSource('');
           return;
         }
 
@@ -151,6 +159,9 @@ export default function ChartPanel() {
         };
         setSource(`${labels[data.source] || data.source}${data.note ? ` · ${data.note}` : ''}`);
         setIsDemo(data.source === 'demo');
+        // The copilot needs the raw source, not the label: it will not trade
+        // synthetic candles.
+        setDataSource(String(data.source || ''));
 
         candlesRef.current = loaded;
         setCandles(loaded);
@@ -226,6 +237,44 @@ export default function ChartPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticker, timeframe, sourceKey]);
 
+  /**
+   * Lo que el copiloto tiene y ha hecho en este ticker.
+   *
+   * Se arma aquí, y no en el panel del copiloto, porque el gráfico es el que
+   * pinta: `paintOverlays` recibe una foto y no conoce ni el motor ni el store.
+   */
+  const copilotOverlay = useMemo<CopilotOverlay>(() => {
+    const position = ownedBy(portfolio, 'copilot', ticker)[0] ?? null;
+
+    const fills = copilotState.events
+      .filter(
+        (event) =>
+          event.ticker === ticker &&
+          event.candleTime !== undefined &&
+          (event.kind === 'open' || event.kind === 'close')
+      )
+      .map((event) => ({
+        time: event.candleTime as number,
+        kind: event.kind as 'open' | 'close',
+        label: event.kind === 'open' ? 'COPILOTO' : 'SALIDA',
+        direction: event.levels?.direction ?? (position?.side ?? 'long'),
+      }))
+      .sort((a, b) => a.time - b.time);
+
+    return {
+      position: position
+        ? {
+            entry: position.entry,
+            stop: position.stop,
+            target: position.target,
+            target2: position.target2,
+            side: position.side,
+          }
+        : null,
+      fills,
+    };
+  }, [ticker, copilotState.events, portfolio]);
+
   // --- Paint ---------------------------------------------------------------
   useEffect(() => {
     const handles = handlesRef.current;
@@ -239,8 +288,9 @@ export default function ChartPanel() {
       allowed,
       remote,
       bias: planBias,
+      copilot: copilotOverlay,
     });
-  }, [candles, overlays, remote, allowed, planBias]);
+  }, [candles, overlays, remote, allowed, planBias, copilotOverlay]);
 
   /**
    * Resumen del oscilador de Elliott.

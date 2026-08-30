@@ -20,13 +20,18 @@ export type TradingState = {
   capabilities: TickerCapabilities | null;
   /** False when the ML API could not be reached at all. */
   apiReachable: boolean;
+  /**
+   * Where the candles came from: 'polygon' | 'polygon-cached' | 'polygon-stale'
+   * | 'demo'. The copilot refuses to trade synthetic candles, so it has to be
+   * shared state and not local to the chart.
+   */
+  dataSource: string;
   watchlist: string[];
   signal: any;
   markers: SeriesMarker<Time>[];
   candles: any[];
   session: boolean;
   live: boolean;
-  portfolioVersion: number;
   dataError: string;
   status: string;
 };
@@ -42,12 +47,12 @@ let state: TradingState = {
   riskPerTrade: 0.01,
   capabilities: null,
   apiReachable: false,
+  dataSource: '',
   signal: null,
   markers: [],
   candles: [],
   session: false,
   live: false,
-  portfolioVersion: 0,
   dataError: "",
   status: "Idle",
 };
@@ -93,7 +98,7 @@ export const actions = {
   setSession: (session: boolean) => patch({ session }),
   setLive: (live: boolean) => patch({ live }),
   setDataError: (dataError: string) => patch({ dataError }),
-  bumpPortfolio: () => patch({ portfolioVersion: state.portfolioVersion + 1 }),
+  setDataSource: (dataSource: string) => patch({ dataSource }),
   setStatus: (status: string) => patch({ status }),
   setOverlay: (id: OverlayId, on: boolean) => patch({ overlays: { ...state.overlays, [id]: on } }),
   setPlanBias: (planBias: PlanBias) => patch({ planBias }),

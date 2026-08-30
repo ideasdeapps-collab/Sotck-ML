@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { openPosition, closePosition, getPortfolio, type Portfolio } from "@/lib/trading/paperEngine";
+import { openPosition, closePosition, usePortfolio } from "@/lib/trading/paperEngine";
 import { useTradingStore } from "@/lib/trading/tradingStore";
 
 export default function TradingSimulator() {
-  const { ticker, signal, capital, bumpPortfolio } = useTradingStore();
-  const [portfolio, setPortfolio] = useState<Portfolio>(() => getPortfolio());
+  const { ticker, signal, capital } = useTradingStore();
+  const portfolio = usePortfolio();
 
   // Reflect capital edits made in the sidebar while no position is open.
   const balance = portfolio.positions.length === 0 ? capital : portfolio.balance;
@@ -14,7 +14,11 @@ export default function TradingSimulator() {
   const [message, setMessage] = useState("");
 
   const entry = Number(signal?.entry) || 0;
-  const open = portfolio.positions.find((position) => position.ticker === ticker);
+  // Scoped to `manual`: the copilot manages its own positions and SELL here
+  // must not close one of them out from under it.
+  const open = portfolio.positions.find(
+    (position) => position.ticker === ticker && position.owner === "manual"
+  );
 
   function buy() {
     if (!entry) {
@@ -31,8 +35,6 @@ export default function TradingSimulator() {
     });
 
     setMessage(result ? `Bought ${shares} ${ticker} @ ${entry}` : "Insufficient balance");
-    setPortfolio(getPortfolio());
-    bumpPortfolio();
   }
 
   function sell() {
@@ -41,10 +43,8 @@ export default function TradingSimulator() {
       return;
     }
 
-    const pnl = closePosition(ticker, entry);
+    const pnl = open ? closePosition(ticker, entry, open.id) : null;
     setMessage(pnl === null ? `No open position on ${ticker}` : `Closed ${ticker} · PnL ${pnl.toFixed(2)}`);
-    setPortfolio(getPortfolio());
-    bumpPortfolio();
   }
 
   return (

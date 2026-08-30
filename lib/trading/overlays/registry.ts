@@ -15,6 +15,7 @@ export type OverlaySource = 'local' | 'xgb' | 'mlp' | 'extended' | 'forecast' | 
 
 export type OverlayId =
   | 'plan'
+  | 'copilot'
   | 'ema'
   | 'vwap'
   | 'bollinger'
@@ -53,6 +54,7 @@ const INTRADAY = ['1m', '5m', '15m', '1h'];
 
 export const OVERLAYS: OverlayDef[] = [
   { id: 'plan', label: 'Plan intradía (S/R + entrada/TP/SL)', group: 'Plan de trading', source: 'intraday', timeframes: INTRADAY, hint: 'Zonas de soporte y resistencia, zona de entrada, TP1/TP2 y stop loss derivados de los niveles con más toques' },
+  { id: 'copilot', label: 'Copiloto · operaciones en papel', group: 'Plan de trading', source: 'local', hint: 'Entradas y salidas que el copiloto ejecutó en la cuenta simulada, y el stop y el objetivo de la posición que tenga viva' },
 
   { id: 'ema', label: 'EMA 20/50', group: 'Indicadores', source: 'local', hint: 'Medias exponenciales sobre las velas cargadas' },
   { id: 'vwap', label: 'VWAP + bandas', group: 'Indicadores', source: 'local', timeframes: INTRADAY, hint: 'VWAP anclado a la sesión con bandas ±1σ y ±2σ' },
@@ -89,6 +91,7 @@ export type OverlayState = Record<OverlayId, boolean>;
  */
 export const DEFAULT_OVERLAYS: OverlayState = {
   plan: false,
+  copilot: false,
   ema: false,
   vwap: false,
   bollinger: false,

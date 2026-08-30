@@ -48,6 +48,16 @@ El workflow entrena y hace backtest de estos 18 símbolos (editables en `retrain
 
 > La predicción da la trayectoria "esperada"; la simulación da el **rango de riesgo**. Juntas forman el abanico ejecutivo del gráfico.
 
+## ✅ Tests
+
+```bash
+npm test          # vitest, solo las funciones puras del Lab
+```
+
+Cubren la aritmética que no puede fallar en silencio: P&L de largos y cortos y persistencia de la
+cuenta simulada (`lib/trading/paperEngine.test.ts`), la política de decisión del copiloto
+(`lib/trading/copilot/policy.test.ts`) y sus guardarraíles (`lib/trading/copilot/guardrails.test.ts`).
+
 ## 🚀 Puesta en marcha
 
 ### 1. Entrenar un modelo (local)
@@ -173,6 +183,45 @@ python training/seed_history.py                    # los 18 tickers
 python training/seed_history.py --tickers NVDA META --horizon 30
 ```
 Genera un forecast por ticker, lo guarda en Supabase y rellena los precios reales.
+
+## 🤖 Copiloto de paper trading (Trading Lab)
+
+En `/trading`, el panel **Copiloto** se enciende con un click y a partir de ahí opera la cuenta
+simulada por su cuenta, con los setups que el propio Lab ya calcula — no inventa ninguno:
+
+- **De dónde salen las operaciones.** Del plan intradía (S/R, entrada, TP1/TP2, stop) y de la
+  estrategia de mechas. Una zona de mecha *activa* — el precio está dentro de la zona de rechazo
+  ahora mismo — manda sobre el plan. Elliott no genera operaciones: entra como contexto.
+- **Tamaño.** `planTrade` (mismo 1 % de riesgo y R:R mínimo de 1.5 que `api/risk_manager.py`),
+  recortado además a lo que el efectivo permite comprar.
+- **Guardarraíles**, evaluados siempre y al final: nunca opera velas simuladas ni fuera de la sesión
+  regular, una posición por ticker, tope de operaciones al día, pérdida máxima diaria (que **apaga**
+  el copiloto), enfriamiento tras un stop y saldo suficiente.
+- **Gestión.** Cierra en stop, TP1 o TP2, y anota cada operación en el diario de sesión.
+- **Registro.** Todo lo que hace — y lo que descarta — queda escrito con sus razones.
+
+Arranca siempre apagado: reabrir la pestaña no reactiva nada. La cuenta, los contadores del día y el
+registro sí sobreviven a la recarga (`localStorage`).
+
+### El veredicto de GPT (opcional)
+
+Con `OPENAI_API_KEY` definida, cada operación pasa por GPT antes de ejecutarse. **El modelo no
+propone precios**: recibe el setup ya cerrado y responde `approve` / `wait` / `reject` con una
+confianza y una explicación, que quedan en el registro. Sin la clave el copiloto funciona igual, solo
+con reglas, y lo dice en el panel.
+
+La clave la lee únicamente el route handler `app/api/copilot` — sin prefijo `NEXT_PUBLIC_`, igual que
+`ML_API_URL`, así que nunca llega al navegador. Se consulta **una vez por setup** (mientras los
+niveles no se muevan es la misma operación), con un mínimo de 60 s entre llamadas, un tope por sesión
+y caché de 5 min en el servidor: el gráfico refresca cada 15 s y sin ese control una sola sesión
+abierta costaría miles de llamadas al día.
+
+```bash
+OPENAI_API_KEY=sk-...        # opcional
+OPENAI_MODEL=gpt-4o-mini     # por defecto
+```
+
+⚠️ Cuenta simulada, con fines educativos. No es una recomendación de inversión.
 
 ## 🔌 Endpoints
 

@@ -978,3 +978,218 @@
   color: #c084fc;
   font-variant-numeric: tabular-nums;
 }
+
+/* --------------------------------------------------------------------------
+   Copiloto — paper trading automático
+   Ocupa dos columnas como el plan intradía: lleva configuración, estado del
+   día y el registro de decisiones, y en una sola columna el log se vuelve
+   ilegible.
+   -------------------------------------------------------------------------- */
+
+.copilot {
+  grid-column: span 2;
+}
+
+.copilot__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.copilot__toggle {
+  background: transparent;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.copilot__toggle:hover { border-color: #475569; }
+
+.copilot__toggle.is-on {
+  border-color: #fbbf24;
+  color: #0b0f14;
+  background: #fbbf24;
+}
+
+.copilot__mode {
+  font-size: 12px !important;
+  color: #64748b !important;
+}
+
+.copilot__warning {
+  font-size: 12px !important;
+  color: #f59e0b !important;
+  font-weight: 600;
+}
+
+.copilot h4 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  margin: 16px 0 8px;
+}
+
+.copilot__config {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px 12px;
+}
+
+.copilot__config label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.copilot__config input[type='number'] {
+  background: #0f1621;
+  border: 1px solid #1f2937;
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 5px 8px;
+  font-size: 13px;
+  width: 100%;
+}
+
+.copilot__config input:disabled { opacity: 0.4; }
+
+.copilot__check {
+  flex-direction: row !important;
+  align-items: center;
+  grid-column: 1 / -1;
+}
+
+.copilot__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0 0;
+  font-size: 13px;
+}
+
+.copilot__stats dt {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+}
+
+.copilot__stats dd {
+  margin: 2px 0 0;
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+}
+
+.copilot .is-bullish { color: #22c55e; }
+.copilot .is-bearish { color: #ef4444; }
+
+.copilot__position {
+  font-size: 13px !important;
+  color: #cbd5e1 !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.copilot__log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.copilot__link {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.copilot__log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.copilot__log > li {
+  border-left: 2px solid #334155;
+  padding: 2px 0 2px 10px;
+}
+
+/* El color del borde es el estado: una apertura y un bloqueo no se leen igual. */
+.copilot__log > li[data-kind='open'] { border-left-color: #fbbf24; }
+.copilot__log > li[data-kind='close'] { border-left-color: #38bdf8; }
+.copilot__log > li[data-kind='skip'] { border-left-color: #a78bfa; }
+.copilot__log > li[data-kind='error'] { border-left-color: #ef4444; }
+
+.copilot__log > li > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+}
+
+.copilot__log-kind { font-weight: 700; }
+.copilot__log-time { font-variant-numeric: tabular-nums; }
+
+.copilot__log-headline {
+  margin: 2px 0 !important;
+  font-size: 13px !important;
+  color: #e2e8f0 !important;
+  font-weight: 600;
+}
+
+.copilot__log-llm {
+  margin: 2px 0 !important;
+  font-size: 12px !important;
+  color: #a78bfa !important;
+}
+
+.copilot__log-reasons {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  font-size: 11px;
+  color: #64748b;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.copilot__panic {
+  margin-top: 14px;
+  width: 100%;
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  color: #f87171;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.copilot__panic:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.copilot__disclaimer {
+  font-size: 11px !important;
+  color: #475569 !important;
+  margin-top: 10px !important;
+}
