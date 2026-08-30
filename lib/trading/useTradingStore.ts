@@ -1,20 +1,37 @@
 "use client";
 import { useSyncExternalStore } from "react";
 import type { SeriesMarker, Time } from "lightweight-charts";
+import { DEFAULT_OVERLAYS, type OverlayId, type OverlayState } from "./overlays/registry";
+import type { PlanBias } from "./dayTrading/intradayPlan";
+import type { TickerCapabilities } from "@/types/trading";
 
 export type TradingState = {
   ticker: string;
   timeframe: string;
   mode: string;
   capital: number;
-  indicators: { ema20: boolean; ema50: boolean; vwap: boolean; bollinger: boolean };
+  /** Which chart overlays are switched on. */
+  overlays: OverlayState;
+  /** Direction the intraday plan is built for; shared by the chart and the panel. */
+  planBias: PlanBias;
+  /** Fraction of capital risked per trade, as the management panel has it. */
+  riskPerTrade: number;
+  /** Which predictive curves exist for the current ticker; null until probed. */
+  capabilities: TickerCapabilities | null;
+  /** False when the ML API could not be reached at all. */
+  apiReachable: boolean;
+  /**
+   * Where the candles came from: 'polygon' | 'polygon-cached' | 'polygon-stale'
+   * | 'demo'. The copilot refuses to trade synthetic candles, so it has to be
+   * shared state and not local to the chart.
+   */
+  dataSource: string;
   watchlist: string[];
   signal: any;
   markers: SeriesMarker<Time>[];
   candles: any[];
   session: boolean;
   live: boolean;
-  portfolioVersion: number;
   dataError: string;
   status: string;
 };
@@ -25,13 +42,17 @@ let state: TradingState = {
   mode: "Live",
   capital: 100000,
   watchlist: ["NVDA", "AMD", "TSLA", "AAPL", "SNDK", "MSFT", "SPY"],
-  indicators: { ema20: true, ema50: true, vwap: true, bollinger: true },
+  overlays: { ...DEFAULT_OVERLAYS },
+  planBias: "auto",
+  riskPerTrade: 0.01,
+  capabilities: null,
+  apiReachable: false,
+  dataSource: '',
   signal: null,
   markers: [],
   candles: [],
   session: false,
   live: false,
-  portfolioVersion: 0,
   dataError: "",
   status: "Idle",
 };
@@ -77,8 +98,13 @@ export const actions = {
   setSession: (session: boolean) => patch({ session }),
   setLive: (live: boolean) => patch({ live }),
   setDataError: (dataError: string) => patch({ dataError }),
-  bumpPortfolio: () => patch({ portfolioVersion: state.portfolioVersion + 1 }),
+  setDataSource: (dataSource: string) => patch({ dataSource }),
   setStatus: (status: string) => patch({ status }),
+  setOverlay: (id: OverlayId, on: boolean) => patch({ overlays: { ...state.overlays, [id]: on } }),
+  setPlanBias: (planBias: PlanBias) => patch({ planBias }),
+  setRiskPerTrade: (riskPerTrade: number) => patch({ riskPerTrade }),
+  setCapabilities: (capabilities: TickerCapabilities | null, apiReachable: boolean) =>
+    patch({ capabilities, apiReachable }),
 };
 
 export function useTradingStore() {

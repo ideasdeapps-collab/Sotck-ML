@@ -324,3 +324,872 @@
   color: #f87171 !important;
   font-size: 12px;
 }
+
+/* --- Overlay controls ----------------------------------------------------- */
+
+.chart-panel__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.overlay-controls {
+  position: relative;
+}
+
+.overlay-controls__toggle {
+  border: 1px solid #1f2937;
+  background: #0b0f14;
+  color: #cbd5f5;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.overlay-controls__toggle:hover {
+  border-color: #334155;
+}
+
+.overlay-controls__menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  width: 290px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  background: #080b10;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+.overlay-controls__menu h4 {
+  margin: 10px 0 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+}
+
+.overlay-controls__menu section:first-child h4 {
+  margin-top: 0;
+}
+
+.overlay-controls__menu label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12px;
+  color: #cbd5f5;
+  cursor: pointer;
+}
+
+.overlay-controls__menu label.is-disabled {
+  color: #475569;
+  cursor: not-allowed;
+}
+
+.overlay-controls__menu label span {
+  flex: 1;
+}
+
+.overlay-controls__menu label em {
+  font-size: 10px;
+  font-style: normal;
+  color: #64748b;
+  text-align: right;
+  max-width: 120px;
+}
+
+/* --- Signals panel -------------------------------------------------------- */
+
+.signals-panel__verdict {
+  margin: 2px 0 6px !important;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.signals-panel__verdict small {
+  font-size: 11px;
+  font-weight: 400;
+  color: #64748b;
+}
+
+.signals-panel__spark {
+  width: 100%;
+  height: 44px;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.signals-panel__alerts {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.signals-panel__alerts li {
+  padding: 4px 0;
+  border-top: 1px solid #131c28;
+}
+
+.signals-panel__alerts li.is-aligned {
+  color: #cbd5f5;
+}
+
+.signals-panel__alerts li.is-aligned span {
+  color: #22c55e;
+}
+
+.signals-panel__quiet {
+  font-size: 11px;
+  color: #475569 !important;
+}
+
+/* --- Regime panel --------------------------------------------------------- */
+
+.regime-panel__badge {
+  margin: 2px 0 6px !important;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.regime-panel__badge small {
+  font-size: 11px;
+  font-weight: 400;
+  color: #64748b;
+}
+
+.regime-panel__quiet {
+  font-size: 11px;
+  color: #475569 !important;
+}
+
+/* --- Trade plan panel ----------------------------------------------------- */
+
+.trade-plan {
+  /* The widest panel in the grid: it carries key levels, both scenarios and
+     the sizing block, so it gets two columns where the layout allows. */
+  grid-column: span 2;
+}
+
+@media (max-width: 1100px) {
+  .trade-plan {
+    grid-column: auto;
+  }
+}
+
+.trade-plan__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.trade-plan__bias {
+  display: flex;
+  gap: 4px;
+}
+
+.trade-plan__bias button {
+  border: 1px solid #1f2937;
+  background: #0b0f14;
+  color: #94a3b8;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.trade-plan__bias button.is-active {
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.trade-plan h4 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  margin: 16px 0 8px;
+}
+
+.trade-plan__direction {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 4px 0 0 !important;
+}
+
+.trade-plan__direction small {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: #64748b;
+}
+
+.trade-plan .is-bullish { color: #22c55e; }
+.trade-plan .is-bearish { color: #ef4444; }
+
+.trade-plan__levels {
+  margin: 0;
+  font-size: 13px;
+}
+
+.trade-plan__levels > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(31, 41, 55, 0.6);
+}
+
+.trade-plan__levels > div:last-child {
+  border-bottom: none;
+}
+
+.trade-plan__levels dt {
+  color: #94a3b8;
+}
+
+.trade-plan__levels dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.trade-plan__scenarios {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.trade-plan__scenario {
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.trade-plan__scenario.is-bullish { border-color: rgba(34, 197, 94, 0.4); }
+.trade-plan__scenario.is-bearish { border-color: rgba(239, 68, 68, 0.4); }
+
+.trade-plan__scenario h5 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+
+.trade-plan__scenario.is-bullish h5 { color: #22c55e; }
+.trade-plan__scenario.is-bearish h5 { color: #ef4444; }
+
+.trade-plan__condition {
+  font-size: 12px;
+  margin: 0 0 6px !important;
+  color: #94a3b8 !important;
+}
+
+.trade-plan__scenario dl {
+  margin: 0;
+  font-size: 12px;
+}
+
+.trade-plan__scenario dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.trade-plan__scenario dt { color: #64748b; }
+
+.trade-plan__scenario dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-plan__checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+}
+
+.trade-plan__checklist li {
+  padding: 3px 0;
+  color: #cbd5f5;
+}
+
+.trade-plan__checklist li span {
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.trade-plan__checklist li.is-ok span { color: #22c55e; }
+.trade-plan__checklist li.is-pending span { color: #64748b; }
+
+.trade-plan__checklist li small {
+  color: #475569;
+  margin-left: 4px;
+}
+
+.trade-plan__risk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.trade-plan__risk input {
+  width: 70px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  border: 1px solid #1f2937;
+  background: #05070a;
+  color: #e5e7eb;
+  font-size: 12px;
+}
+
+.trade-plan__save {
+  width: 100%;
+  margin-top: 12px;
+  padding: 9px;
+  border-radius: 8px;
+  border: 1px solid #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  color: #38bdf8;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.trade-plan__save:hover {
+  background: rgba(56, 189, 248, 0.2);
+}
+
+/* --- Plan alerts ---------------------------------------------------------- */
+
+.trade-plan__alerts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.trade-plan__alerts-head h4 {
+  margin-bottom: 0;
+}
+
+.trade-plan__alerts-head button {
+  border: 1px solid #1f2937;
+  background: #0b0f14;
+  color: #94a3b8;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.trade-plan__alerts-head button.is-active {
+  border-color: #22c55e;
+  color: #22c55e;
+}
+
+.trade-plan__armed {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 4px 12px;
+  font-size: 12px;
+}
+
+.trade-plan__armed li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: #94a3b8;
+}
+
+.trade-plan__armed li b {
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-plan__armed li small {
+  color: #475569;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-plan__alert-log {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  font-size: 12px;
+}
+
+.trade-plan__alert-log li {
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(31, 41, 55, 0.6);
+  color: #cbd5f5;
+}
+
+.trade-plan__alert-log li:last-child {
+  border-bottom: none;
+}
+
+.trade-plan__alert-log li small {
+  color: #475569;
+  margin-right: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-plan__alert-log li.is-good { color: #22c55e; }
+.trade-plan__alert-log li.is-bad { color: #ef4444; }
+.trade-plan__alert-log li.is-info { color: #38bdf8; }
+
+/* --- Screener ------------------------------------------------------------- */
+
+.screener__header,
+.journal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.screener__header h3,
+.journal__header h3 {
+  margin: 0;
+}
+
+.screener__header button,
+.journal__header button {
+  border: 1px solid #1f2937;
+  background: #0b0f14;
+  color: #cbd5f5;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.screener__header button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.screener__rows {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+
+.screener__rows li {
+  border-bottom: 1px solid rgba(31, 41, 55, 0.6);
+}
+
+.screener__rows li:last-child {
+  border-bottom: none;
+}
+
+.screener__rows li button {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 2px 8px;
+  width: 100%;
+  padding: 7px 4px;
+  border: none;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.screener__rows li.is-active button {
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.screener__ticker {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.screener__verdict {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.screener__detail {
+  grid-column: 2;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.screener__detail b {
+  color: #22c55e;
+}
+
+/* --- Session journal ------------------------------------------------------ */
+
+.journal__rows {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+
+.journal__rows li {
+  padding: 7px 4px;
+  border-bottom: 1px solid rgba(31, 41, 55, 0.6);
+}
+
+.journal__rows li:last-child {
+  border-bottom: none;
+}
+
+.journal__rows li.is-active {
+  background: rgba(56, 189, 248, 0.06);
+}
+
+.journal__row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.journal__row-head button {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: #475569;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.journal__row-head button:hover {
+  color: #f87171;
+}
+
+.journal__rows small {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.journal__outcome {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid #1f2937;
+  color: #94a3b8;
+}
+
+.journal__outcome.is-tp1,
+.journal__outcome.is-tp2 {
+  border-color: rgba(34, 197, 94, 0.5);
+  color: #22c55e;
+}
+
+.journal__outcome.is-stop {
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #ef4444;
+}
+
+.journal .is-bullish { color: #22c55e; }
+.journal .is-bearish { color: #ef4444; }
+
+/* --- Estrategia de mechas --------------------------------------------------
+   La sección reutiliza las clases .trade-plan__*, así que aquí solo va la
+   lista de zonas detectadas y sus estados. */
+
+.wick-zones__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.wick-zones__zone {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 6px 8px;
+  border: 1px solid #1f2937;
+  border-left-width: 3px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.wick-zones__zone.is-active { border-left-color: #38bdf8; }
+.wick-zones__zone.is-armed { border-left-color: #14b8a6; }
+.wick-zones__zone.is-pending { border-left-color: #475569; }
+.wick-zones__zone.is-mitigated { border-left-color: #1f2937; opacity: 0.55; }
+
+.wick-zones__zone > span {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.wick-zones__zone b {
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+}
+
+.wick-zones__zone em {
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: #64748b;
+}
+
+.wick-zones__zone.is-active em { color: #38bdf8; }
+
+.wick-zones__zone small {
+  grid-column: 1 / -1;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.wick-zones .is-bullish { color: #22c55e; }
+.wick-zones .is-bearish { color: #ef4444; }
+
+/* --- Elliott · probabilidad de inicio -------------------------------------- */
+
+.chart-panel__elliott {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: #c084fc;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+   Copiloto — paper trading automático
+   Ocupa dos columnas como el plan intradía: lleva configuración, estado del
+   día y el registro de decisiones, y en una sola columna el log se vuelve
+   ilegible.
+   -------------------------------------------------------------------------- */
+
+.copilot {
+  grid-column: span 2;
+}
+
+.copilot__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.copilot__toggle {
+  background: transparent;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.copilot__toggle:hover { border-color: #475569; }
+
+.copilot__toggle.is-on {
+  border-color: #fbbf24;
+  color: #0b0f14;
+  background: #fbbf24;
+}
+
+.copilot__mode {
+  font-size: 12px !important;
+  color: #64748b !important;
+}
+
+.copilot__warning {
+  font-size: 12px !important;
+  color: #f59e0b !important;
+  font-weight: 600;
+}
+
+.copilot h4 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  margin: 16px 0 8px;
+}
+
+.copilot__config {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px 12px;
+}
+
+.copilot__config label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.copilot__config input[type='number'] {
+  background: #0f1621;
+  border: 1px solid #1f2937;
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 5px 8px;
+  font-size: 13px;
+  width: 100%;
+}
+
+.copilot__config input:disabled { opacity: 0.4; }
+
+.copilot__check {
+  flex-direction: row !important;
+  align-items: center;
+  grid-column: 1 / -1;
+}
+
+.copilot__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0 0;
+  font-size: 13px;
+}
+
+.copilot__stats dt {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+}
+
+.copilot__stats dd {
+  margin: 2px 0 0;
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+}
+
+.copilot .is-bullish { color: #22c55e; }
+.copilot .is-bearish { color: #ef4444; }
+
+.copilot__position {
+  font-size: 13px !important;
+  color: #cbd5e1 !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.copilot__log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.copilot__link {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.copilot__log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.copilot__log > li {
+  border-left: 2px solid #334155;
+  padding: 2px 0 2px 10px;
+}
+
+/* El color del borde es el estado: una apertura y un bloqueo no se leen igual. */
+.copilot__log > li[data-kind='open'] { border-left-color: #fbbf24; }
+.copilot__log > li[data-kind='close'] { border-left-color: #38bdf8; }
+.copilot__log > li[data-kind='skip'] { border-left-color: #a78bfa; }
+.copilot__log > li[data-kind='error'] { border-left-color: #ef4444; }
+
+.copilot__log > li > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+}
+
+.copilot__log-kind { font-weight: 700; }
+.copilot__log-time { font-variant-numeric: tabular-nums; }
+
+.copilot__log-headline {
+  margin: 2px 0 !important;
+  font-size: 13px !important;
+  color: #e2e8f0 !important;
+  font-weight: 600;
+}
+
+.copilot__log-llm {
+  margin: 2px 0 !important;
+  font-size: 12px !important;
+  color: #a78bfa !important;
+}
+
+.copilot__log-reasons {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  font-size: 11px;
+  color: #64748b;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.copilot__panic {
+  margin-top: 14px;
+  width: 100%;
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  color: #f87171;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.copilot__panic:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.copilot__disclaimer {
+  font-size: 11px !important;
+  color: #475569 !important;
+  margin-top: 10px !important;
+}

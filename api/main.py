@@ -34,6 +34,11 @@ from validate import validate_models           # noqa: E402  ← predicho vs rea
 from psychology import psychology_analysis      # noqa: E402  ← Índice de Psicología (IPM)
 from intraday_ml import predict_session, fetch_today_bars, fetch_live_price  # noqa: E402
 from extended_ml import predict_curve_extended   # noqa: E402  ← modelo AH+PM
+from premarket import premarket_prediction      # noqa: E402  ← ancla premarket (gap)
+from patterns.pattern_engine import PatternEngine   # noqa: E402  ← FVG / OB / liquidez
+from overlays.chart_overlay import build_chart_overlay  # noqa: E402
+from market_features import generate_features   # noqa: E402
+from market_regime import detect_market_regime  # noqa: E402
 import supabase_client as sb                     # noqa: E402
 import price_store                               # noqa: E402  ← caché de precios (Supabase)
 import intraday_store                            # noqa: E402  ← snapshots intradía (Supabase)
@@ -368,6 +373,64 @@ def psychology(ticker: str, horizon: int = 21, sentiment: float = 0.0):
         raise HTTPException(404, str(e))
     except Exception as e:
         raise HTTPException(400, str(e))
+
+
+# --------------------------------------------------------------------------- #
+# Trading Lab: premarket, patrones de estructura y régimen de mercado
+# --------------------------------------------------------------------------- #
+@app.get("/premarket")
+def premarket(ticker: str):
+    """Gap de apertura + si el premarket CONFIRMA o CONTRADICE a XGBoost y MLP."""
+    try:
+        return premarket_prediction(ticker)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/patterns")
+def patterns(ticker: str, interval: int = 15, days: int = 1):
+    """Overlay de estructura: FVG, order blocks, barridos de liquidez y S/R.
+
+    Reutiliza las velas y el clustering de S/R que ya calcula analyze_intraday,
+    en lugar de volver a pedir barras a Polygon.
+    """
+    try:
+        intr = analyze_intraday(ticker, minutes=interval, days=days)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+    chartism = intr["chartism"]
+    detected = PatternEngine().analyze(
+        intr["candles_ohlc"],
+        {"support": chartism["support"], "resistance": chartism["resistance"]},
+    )
+    return {
+        "ticker": ticker.upper(),
+        "interval_min": interval,
+        "generated_at": intr["generated_at"],
+        "last_price": intr["last_price"],
+        "structure": chartism["structure"],
+        "breakouts": chartism["breakouts"],
+        "price_action": intr.get("price_action", []),
+        **build_chart_overlay(detected),
+    }
+
+
+@app.get("/regime")
+def regime(ticker: str, interval: int = 15, days: int = 1):
+    """Régimen de mercado (BULLISH / BEARISH / SIDEWAYS / HIGH_VOLATILITY / TRANSITION)."""
+    try:
+        intr = analyze_intraday(ticker, minutes=interval, days=days)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+    features = generate_features(intr["candles_ohlc"])
+    if not features:
+        raise HTTPException(400, f"Sin velas suficientes para clasificar {ticker.upper()}.")
+
+    return {"ticker": ticker.upper(), "features": features, **detect_market_regime(features)}
 
 
 # --------------------------------------------------------------------------- #

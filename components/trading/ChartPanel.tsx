@@ -1,39 +1,84 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  createChart,
   CandlestickSeries,
-  LineSeries,
-  createSeriesMarkers,
+  createChart,
   type IChartApi,
+  type ISeriesApi,
+  type Time,
 } from 'lightweight-charts';
 import { useTradingStore } from '@/lib/trading/tradingStore';
 import { connectPolygonStream } from '@/lib/trading/polygonStream';
-import { generateAISignal, signalToMarker } from '@/lib/trading/aiSignalEngine';
 import { calculateIndicators } from '@/lib/trading/indicators';
 import { fetchJson } from '@/lib/trading/fetchJson';
+import { capabilitiesFor, loadCapabilities } from '@/lib/trading/capabilities';
+import { createOverlayLayer, type OverlayLayer } from '@/lib/trading/overlays/layer';
+import { paintOverlays } from '@/lib/trading/overlays/paint';
+import { loadRemoteOverlays, requiredSources, type RemoteOverlayData } from '@/lib/trading/overlays/remoteData';
+import { OVERLAYS, blockedReason, type OverlayId } from '@/lib/trading/overlays/registry';
+import { calibrate, elliottProbabilitySeries } from '@/lib/trading/priceAction/elliottStart';
+import { useCopilot } from '@/lib/trading/copilot/store';
+import { ownedBy, usePortfolio } from '@/lib/trading/paperEngine';
+import type { CopilotOverlay } from '@/lib/trading/overlays/paint';
+import OverlayControls from './OverlayControls';
 import type { Candle } from '@/lib/trading/marketData';
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '1d'];
 
+type ChartHandles = {
+  chart: IChartApi;
+  candleSeries: ISeriesApi<'Candlestick', Time>;
+  layer: OverlayLayer;
+};
+
 export default function ChartPanel() {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const handlesRef = useRef<ChartHandles | null>(null);
   const candlesRef = useRef<Candle[]>([]);
-  const { ticker, timeframe, setTimeframe, setMarkers, setCandles, setLive, setDataError } = useTradingStore();
-  const [source, setSource] = useState<string>('');
-  const [isDemo, setIsDemo] = useState(false);
-  const [error, setError] = useState<string>('');
 
+  const {
+    ticker,
+    timeframe,
+    setTimeframe,
+    setCandles,
+    setLive,
+    setDataError,
+    setDataSource,
+    candles,
+    overlays,
+    planBias,
+    capabilities,
+    apiReachable,
+    setCapabilities,
+  } = useTradingStore();
+
+  const copilotState = useCopilot();
+  const portfolio = usePortfolio();
+
+  const [source, setSource] = useState('');
+  const [isDemo, setIsDemo] = useState(false);
+  const [error, setError] = useState('');
+  const [remote, setRemote] = useState<RemoteOverlayData>({});
+  const [loadingOverlays, setLoadingOverlays] = useState(false);
+
+  /** Why each overlay is (or is not) available right now. */
+  const blocked = useMemo(() => {
+    const map = {} as Record<OverlayId, string | null>;
+    for (const overlay of OVERLAYS) {
+      map[overlay.id] = blockedReason(overlay, timeframe, capabilities, apiReachable);
+    }
+    return map;
+  }, [timeframe, capabilities, apiReachable]);
+
+  const allowed = useCallback((id: OverlayId) => blocked[id] === null, [blocked]);
+
+  // --- Chart lifecycle: created once, never rebuilt for a data change ------
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    let chart: IChartApi | null = null;
-    let disconnect: (() => void) | undefined;
-    let disposed = false;
-
-    chart = createChart(container, {
+    const chart = createChart(container, {
       autoSize: true,
       height: 520,
       layout: { background: { color: '#0b0f14' }, textColor: '#9ca3af' },
@@ -52,26 +97,40 @@ export default function ChartPanel() {
       wickDownColor: '#ef4444',
       borderVisible: false,
     });
-    const ema20Series = chart.addSeries(LineSeries, { color: '#38bdf8', lineWidth: 1 });
-    const ema50Series = chart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 1 });
-    const markerApi = createSeriesMarkers(candleSeries, []);
 
-    function paintIndicators(candles: Candle[]) {
-      if (candles.length === 0) return;
-      const indicators = calculateIndicators(candles);
-      ema20Series.setData(candles.map((c, i) => ({ time: c.time as any, value: indicators.ema20[i] })));
-      ema50Series.setData(candles.map((c, i) => ({ time: c.time as any, value: indicators.ema50[i] })));
-    }
+    handlesRef.current = { chart, candleSeries, layer: createOverlayLayer(chart, candleSeries) };
 
-    function paintSignal(candles: Candle[]) {
-      const aiSignal = generateAISignal(candles);
-      if (aiSignal.signal === 'HOLD') return;
-      const aiMarkers = signalToMarker(candles, aiSignal.signal);
-      setMarkers(aiMarkers);
-      markerApi.setMarkers(aiMarkers);
-    }
+    return () => {
+      handlesRef.current?.layer.destroy();
+      handlesRef.current = null;
+      chart.remove();
+    };
+  }, []);
 
-    async function load() {
+  // --- Which curves exist for this ticker ---------------------------------
+  useEffect(() => {
+    let cancelled = false;
+
+    loadCapabilities().then((map) => {
+      if (cancelled) return;
+      setCapabilities(map.reachable ? capabilitiesFor(map, ticker) : null, map.reachable);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticker]);
+
+  // --- Candles + live polling ---------------------------------------------
+  useEffect(() => {
+    const handles = handlesRef.current;
+    if (!handles) return;
+
+    let disconnect: (() => void) | undefined;
+    let disposed = false;
+
+    const load = async () => {
       try {
         const data = await fetchJson(
           `/api/market/candles?ticker=${encodeURIComponent(ticker)}&timeframe=${encodeURIComponent(timeframe)}`
@@ -79,17 +138,19 @@ export default function ChartPanel() {
 
         if (disposed) return;
 
-        const candles: Candle[] = Array.isArray(data?.candles) ? data.candles : [];
+        const loaded: Candle[] = Array.isArray(data?.candles) ? data.candles : [];
 
-        if (candles.length === 0) {
+        if (loaded.length === 0) {
           const reason = data?.note || data?.error || 'No candles returned';
           setError(reason);
           setDataError(reason);
+          setDataSource('');
           return;
         }
 
         setError('');
         setDataError('');
+
         const labels: Record<string, string> = {
           polygon: 'Polygon · live',
           'polygon-cached': 'Polygon · cached',
@@ -98,28 +159,30 @@ export default function ChartPanel() {
         };
         setSource(`${labels[data.source] || data.source}${data.note ? ` · ${data.note}` : ''}`);
         setIsDemo(data.source === 'demo');
+        // The copilot needs the raw source, not the label: it will not trade
+        // synthetic candles.
+        setDataSource(String(data.source || ''));
 
-        candlesRef.current = candles;
-        setCandles(candles);
-        candleSeries.setData(candles as any);
-        paintIndicators(candles);
-        paintSignal(candles);
-        chart?.timeScale().fitContent();
+        candlesRef.current = loaded;
+        setCandles(loaded);
+        handles.candleSeries.setData(loaded as never);
+        handles.chart.timeScale().fitContent();
 
         disconnect = connectPolygonStream(
           ticker,
           (candle) => {
             if (disposed) return;
-            candleSeries.update(candle as any);
+
+            handles.candleSeries.update(candle as never);
+
             const previous = candlesRef.current;
             const merged =
               previous[previous.length - 1]?.time === candle.time
                 ? [...previous.slice(0, -1), candle]
                 : [...previous.slice(-500), candle];
+
             candlesRef.current = merged;
             setCandles(merged);
-            paintIndicators(merged);
-            paintSignal(merged);
           },
           timeframe
         );
@@ -131,7 +194,7 @@ export default function ChartPanel() {
         setError(reason);
         setDataError(reason);
       }
-    }
+    };
 
     load();
 
@@ -139,12 +202,144 @@ export default function ChartPanel() {
       disposed = true;
       disconnect?.();
       setLive(false);
-      markerApi.detach();
-      chart?.remove();
-      chart = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticker, timeframe]);
+
+  // --- Remote overlay data -------------------------------------------------
+  const sources = useMemo(() => requiredSources(overlays, allowed), [overlays, allowed]);
+  const sourceKey = sources.join(',');
+
+  useEffect(() => {
+    if (sources.length === 0) {
+      setRemote({});
+      setLoadingOverlays(false);
+      return;
+    }
+
+    let cancelled = false;
+    // Drop the previous ticker's curves before the new ones arrive, otherwise
+    // they stay painted over candles they have nothing to do with.
+    setRemote({});
+    setLoadingOverlays(true);
+
+    loadRemoteOverlays(ticker, timeframe, sources)
+      .then((data) => {
+        if (!cancelled) setRemote(data);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingOverlays(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticker, timeframe, sourceKey]);
+
+  /**
+   * Lo que el copiloto tiene y ha hecho en este ticker.
+   *
+   * Se arma aquí, y no en el panel del copiloto, porque el gráfico es el que
+   * pinta: `paintOverlays` recibe una foto y no conoce ni el motor ni el store.
+   */
+  const copilotOverlay = useMemo<CopilotOverlay>(() => {
+    const position = ownedBy(portfolio, 'copilot', ticker)[0] ?? null;
+
+    const fills = copilotState.events
+      .filter(
+        (event) =>
+          event.ticker === ticker &&
+          event.candleTime !== undefined &&
+          (event.kind === 'open' || event.kind === 'close')
+      )
+      .map((event) => ({
+        time: event.candleTime as number,
+        kind: event.kind as 'open' | 'close',
+        label: event.kind === 'open' ? 'COPILOTO' : 'SALIDA',
+        direction: event.levels?.direction ?? (position?.side ?? 'long'),
+      }))
+      .sort((a, b) => a.time - b.time);
+
+    return {
+      position: position
+        ? {
+            entry: position.entry,
+            stop: position.stop,
+            target: position.target,
+            target2: position.target2,
+            side: position.side,
+          }
+        : null,
+      fills,
+    };
+  }, [ticker, copilotState.events, portfolio]);
+
+  // --- Paint ---------------------------------------------------------------
+  useEffect(() => {
+    const handles = handlesRef.current;
+    if (!handles || candles.length === 0) return;
+
+    paintOverlays({
+      layer: handles.layer,
+      candles: candles as Candle[],
+      indicators: calculateIndicators(candles as Candle[]),
+      enabled: overlays,
+      allowed,
+      remote,
+      bias: planBias,
+      copilot: copilotOverlay,
+    });
+  }, [candles, overlays, remote, allowed, planBias, copilotOverlay]);
+
+  /**
+   * Resumen del oscilador de Elliott.
+   *
+   * Llama a las mismas funciones puras que `paintOverlays`, igual que
+   * `TradePlanPanel` comparte `buildIntradayPlan` con su overlay: la leyenda y la
+   * curva no pueden decir cosas distintas. Solo se calcula con el overlay
+   * encendido, que es cuando hay algo que explicar.
+   */
+  const elliott = useMemo(() => {
+    if (!overlays.elliottStart || !allowed('elliottStart') || candles.length === 0) return null;
+
+    const series = candles as Candle[];
+    const { candidates, current } = elliottProbabilitySeries({
+      candles: series,
+      indicators: calculateIndicators(series),
+    });
+
+    return current ? { current, buckets: calibrate(candidates) } : null;
+  }, [candles, overlays.elliottStart, allowed]);
+
+  const elliottLegend = (() => {
+    if (!elliott) return '';
+
+    const { current, buckets } = elliott;
+    const state =
+      current.state === 'confirmed'
+        ? 'confirmado — onda 3 en marcha'
+        : current.state === 'invalidated'
+          ? 'invalidado'
+          : 'formando';
+    const direction = current.direction === 'long' ? 'alcista' : 'bajista';
+
+    const history = buckets
+      .filter((bucket) => bucket.total > 0)
+      .map((bucket) => `${bucket.confirmed}/${bucket.total} confirmados (≥${bucket.threshold}%)`)
+      .join(' · ');
+
+    return (
+      `Elliott · ${current.probability}% · ${state} (${direction}) · ` +
+      `dispara en ${current.trigger.toFixed(2)}, invalida en ${current.invalidation.toFixed(2)}` +
+      (history ? ` — histórico: ${history}` : ' — sin histórico suficiente')
+    );
+  })();
+
+  /** Failures that the toggles alone cannot explain. */
+  const overlayErrors = Object.entries(remote)
+    .filter(([, result]) => result && !result.ok)
+    .map(([key, result]) => `${key}: ${(result as { reason: string }).reason}`);
 
   return (
     <section className="chart-panel">
@@ -152,26 +347,35 @@ export default function ChartPanel() {
         <h3>
           {ticker} · {timeframe} · {error ? 'OFFLINE' : !source ? 'LOADING' : isDemo ? 'SIMULATED' : 'POLYGON'}
         </h3>
-        <div className="chart-panel__timeframes">
-          {TIMEFRAMES.map((tf) => (
-            <button
-              key={tf}
-              type="button"
-              className={tf === timeframe ? 'is-active' : ''}
-              onClick={() => setTimeframe(tf)}
-            >
-              {tf}
-            </button>
-          ))}
+        <div className="chart-panel__controls">
+          <div className="chart-panel__timeframes">
+            {TIMEFRAMES.map((tf) => (
+              <button
+                key={tf}
+                type="button"
+                className={tf === timeframe ? 'is-active' : ''}
+                onClick={() => setTimeframe(tf)}
+              >
+                {tf}
+              </button>
+            ))}
+          </div>
+          <OverlayControls blocked={blocked} loading={loadingOverlays} />
         </div>
       </header>
+
       {error ? (
         <p className="chart-panel__error">{error}</p>
       ) : (
-        <p className={isDemo ? 'chart-panel__warning' : 'chart-panel__meta'}>
-          Source: {source || 'loading…'}
-        </p>
+        <p className={isDemo ? 'chart-panel__warning' : 'chart-panel__meta'}>Source: {source || 'loading…'}</p>
       )}
+
+      {elliottLegend && <p className="chart-panel__elliott">{elliottLegend}</p>}
+
+      {overlayErrors.length > 0 && (
+        <p className="chart-panel__error">Overlays sin datos — {overlayErrors.join(' · ')}</p>
+      )}
+
       <div ref={containerRef} className="chart-panel__canvas" />
     </section>
   );
