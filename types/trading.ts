@@ -123,6 +123,22 @@ export type SessionPrediction = {
   note?: string;
 };
 
+/** GET /predict-1m — the next few minutes projected bar by bar. */
+export type OneMinutePrediction = {
+  ticker: string;
+  session_date: string;
+  bars_real: number;
+  horizon_min: number;
+  last_real_close: number;
+  /** ISO with an ET offset. On the Starter plan it runs ~15 min behind now. */
+  last_real_time: string;
+  predicted: { time: string; close: number; predicted: boolean }[];
+  clamp: { sigma_1m: number; cap_per_bar: number; bars_clamped: number };
+  model_meta: { mae?: number; r2?: number; directional_accuracy?: number };
+  generated_at: string;
+  note: string;
+};
+
 export type SignalsResponse = {
   ticker: string;
   last_price: number;
@@ -215,4 +231,5 @@ export type TickerCapabilities = {
   mlp: boolean;
   intraday: boolean;
   extended: boolean;
+  oneMinute: boolean;
 };
