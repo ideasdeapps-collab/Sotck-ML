@@ -239,6 +239,8 @@ OPENAI_MODEL=gpt-4o-mini     # por defecto
 | GET | `/intraday` | `?ticker=NVDA&interval=15&days=1` | **velas + chartismo + price action** |
 | GET | `/signals` | `?ticker=NVDA&interval=15&days=2` | **señales combinadas** (curva + alertas + veredicto) |
 | GET | `/signals-scan` | `?tickers=NVDA,META` | escaneo de watchlist (throttled) |
+| GET | `/predict-1m` | `?ticker=NVDA&horizon=30` | **curva recursiva de 1 min** de los próximos minutos |
+| GET | `/models-1m` | — | tickers con modelo de 1 min entrenado |
 
 Ejemplo:
 ```bash
@@ -246,6 +248,25 @@ curl -X POST http://localhost:8000/forecast \
   -H "Content-Type: application/json" \
   -d '{"ticker":"NVDA","horizon":30,"n_sims":10000,"save":true}'
 ```
+
+## ⏱️ Modelo de 1 minuto
+
+Overlay **«Curva ML 1m (+30 min)»** del Trading Lab, solo en temporalidad 1m y solo para tickers
+con modelo entrenado (`NVDA`, `QQQ`, `SNDK` por defecto).
+
+Proyecta 30 minutos, no hasta el cierre: 390 pasos recursivos de retorno acotado se aplanan en una
+recta sin información, y el bucle no cabría en el tiempo de respuesta del proxy.
+
+**Dos cosas que el overlay dice en pantalla y conviene repetir aquí:** el plan Starter de Polygon
+sirve datos con ~15 minutos de retraso, así que la curva arranca en un punto que ya es pasado; y a
+un minuto la exactitud direccional ronda el 50 %. Es contexto de mercado, no una señal de entrada.
+
+Entrenar otros tickers:
+```bash
+python training/train_xgb_1m.py --ticker AMD --days 60
+```
+O de forma permanente, añadiéndolos a `ONE_MIN_TICKERS` en `.github/workflows/retrain.yml`. El
+overlay aparece solo para cualquier ticker que tenga artefacto: `/models-1m` lista el directorio.
 
 ## ⚠️ Aviso
 Esta herramienta es para análisis y educación. Los mercados son estocásticos; **ningún modelo garantiza precios futuros**. Úsala como apoyo a la decisión, no como consejo de inversión.
