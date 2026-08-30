@@ -354,9 +354,17 @@ export default function ChartPanel() {
     });
     const acierto = data.model_meta?.directional_accuracy;
 
+    // El acierto puede faltar (sin meta_1m_<ticker>.json entrenado) o venir
+    // como cifra cruda que a un lector desprevenido le suena a ventaja. Las
+    // dos situaciones se resuelven con la misma cautela explícita, para que
+    // la ausencia de dato no calle la advertencia.
+    const lecturaAcierto =
+      acierto != null
+        ? `acierto direccional ${(acierto * 100).toFixed(0)}% — a un minuto, un valor cercano al 50% es ruido, no ventaja`
+        : 'sin acierto direccional reportado para este ticker — trátalo con la misma cautela que un 50%';
+
     return (
-      `Curva ML 1m · última barra real ${hora} · +${data.horizon_min} min` +
-      (acierto ? ` · acierto direccional ${(acierto * 100).toFixed(0)}%` : '') +
+      `Curva ML 1m · última barra real ${hora} · +${data.horizon_min} min · ${lecturaAcierto}` +
       ' — datos con ~15 min de retraso (plan Starter); contexto, no señal de entrada'
     );
   })();

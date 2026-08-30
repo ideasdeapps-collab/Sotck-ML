@@ -682,7 +682,8 @@ export function paintOverlays({
     const points: LinePoint[] = [];
 
     try {
-      points.push({ time: toChartTime(oneMinute.last_real_time), value: oneMinute.last_real_close });
+      const time = snap(oneMinute.last_real_time);
+      if (time) points.push({ time, value: oneMinute.last_real_close });
     } catch {
       // Sin punto de arranque la curva flota; mejor dibujarla sin él que no dibujarla.
     }
