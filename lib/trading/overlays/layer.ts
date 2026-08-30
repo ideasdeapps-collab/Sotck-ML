@@ -10,6 +10,7 @@ import {
   type Time,
 } from 'lightweight-charts';
 import { BoxPrimitive, type Box } from './boxPrimitive';
+import { CalloutPrimitive, type Callout } from './calloutPrimitive';
 
 /**
  * One place that owns everything drawn on top of the candles.
@@ -48,6 +49,7 @@ export type OverlayLayer = {
   line(id: string, points: LinePoint[], options: LineOptions): void;
   priceLines(id: string, levels: PriceLineSpec[]): void;
   boxes(id: string, boxes: Box[]): void;
+  callouts(id: string, callouts: Callout[]): void;
   markers(id: string, markers: SeriesMarker<Time>[]): void;
   remove(id: string): void;
   destroy(): void;
@@ -62,6 +64,7 @@ export function createOverlayLayer(
   const linePanes = new Map<string, number>();
   const priceLines = new Map<string, IPriceLine[]>();
   const boxLayers = new Map<string, BoxPrimitive>();
+  const calloutLayers = new Map<string, CalloutPrimitive>();
   const markerGroups = new Map<string, SeriesMarker<Time>[]>();
 
   let markerApi: ISeriesMarkersPluginApi<Time> | null = null;
@@ -113,6 +116,13 @@ export function createOverlayLayer(
     if (!primitive) return;
     anchorSeries.detachPrimitive(primitive);
     boxLayers.delete(id);
+  }
+
+  function removeCallouts(id: string) {
+    const primitive = calloutLayers.get(id);
+    if (!primitive) return;
+    anchorSeries.detachPrimitive(primitive);
+    calloutLayers.delete(id);
   }
 
   return {
@@ -200,6 +210,24 @@ export function createOverlayLayer(
       primitive.setBoxes(boxes);
     },
 
+    callouts(id, callouts) {
+      if (destroyed) return;
+
+      if (callouts.length === 0) {
+        removeCallouts(id);
+        return;
+      }
+
+      let primitive = calloutLayers.get(id);
+      if (!primitive) {
+        primitive = new CalloutPrimitive();
+        anchorSeries.attachPrimitive(primitive);
+        calloutLayers.set(id, primitive);
+      }
+
+      primitive.setCallouts(callouts);
+    },
+
     markers(id, markers) {
       if (destroyed) return;
 
@@ -214,6 +242,7 @@ export function createOverlayLayer(
       removeLine(id);
       removePriceLines(id);
       removeBoxes(id);
+      removeCallouts(id);
       markerGroups.delete(id);
       repaintMarkers();
     },
@@ -230,6 +259,7 @@ export function createOverlayLayer(
       linePanes.clear();
       priceLines.clear();
       boxLayers.clear();
+      calloutLayers.clear();
     },
   };
 }
