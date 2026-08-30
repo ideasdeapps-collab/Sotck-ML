@@ -7,10 +7,13 @@ barras reales de la sesión en curso, con clamp anti-explosión.
 NO proyecta hasta el cierre, a diferencia del modelo de 15 min: serían 390 pasos
 encadenados de retorno acotado, que se aplanan en una recta sin información.
 
-Las features se calculan de forma INCREMENTAL —acumuladores en vez de recalcular
-el DataFrame entero por paso—, porque el bucle del modelo de 15 min es cuadrático
-y a esta granularidad no cabe en el tiempo de respuesta. El precio de esa
-optimización es tener dos definiciones de las mismas features;
+Las features se calculan de forma INCREMENTAL —sumas vectorizadas con numpy
+sobre `work` en cada paso (O(n) por llamada), en vez de recalcular el
+DataFrame entero con `add_1m_features` (que reconstruye columnas, agrupa por
+día, etc.) para quedarse solo con la última fila. Sigue siendo O(n²) sobre el
+horizonte igual que el bucle de 15 min, pero con una constante mucho menor:
+es lo que cabe en el tiempo de respuesta a esta granularidad. El precio de
+esa optimización es tener dos definiciones de las mismas features;
 `tests/test_intraday_1m.py` afirma que coinciden con `add_1m_features`.
 """
 
@@ -67,7 +70,7 @@ def load_1m_model(ticker: str):
     return model, meta
 
 
-def incremental_features(work: pd.DataFrame) -> list[float]:
+def incremental_features(work: pd.DataFrame, prev_close: float | None = None) -> list[float]:
     """
     Las 15 features de la ÚLTIMA fila de `work`, en el orden de FEATURE_COLS.
 
@@ -76,6 +79,8 @@ def incremental_features(work: pd.DataFrame) -> list[float]:
     rompe, el modelo recibe otras entradas y no falla, solo acierta menos.
 
     Se asume que `work` contiene UNA sola sesión, que es como lo llama el bucle.
+    `prev_close` es el cierre de la sesión ANTERIOR (fuera de `work`), necesario
+    para el feature `gap`; ver el comentario junto a su cálculo más abajo.
     """
     n = len(work)
     close = work["close"].to_numpy(dtype=float)
@@ -103,9 +108,13 @@ def incremental_features(work: pd.DataFrame) -> list[float]:
     vol_mean = cum_v / n if n else 0.0
     vol_rel = float(volume[i] / vol_mean) if vol_mean > 0 else 0.0
 
-    # Una sola sesión en memoria: no hay cierre previo, así que el gap es 0,
-    # igual que `add_1m_features` con `fillna(0.0)` sobre el primer día.
+    # `work` solo trae la sesión de HOY, así que el cierre previo no está en
+    # sus filas: hay que recibirlo aparte (lo trae `fetch_today_1m_bars`, que
+    # sí descarga varios días). Sin él, gap=0.0 — igual que `add_1m_features`
+    # con `fillna(0.0)` en el primer día de su ventana histórica.
     gap = 0.0
+    if prev_close is not None and np.isfinite(prev_close) and prev_close > 0:
+        gap = float(open_px / prev_close - 1.0)
 
     rets = np.full(n, np.nan)
     if n > 1:
@@ -130,8 +139,12 @@ def incremental_features(work: pd.DataFrame) -> list[float]:
     return [0.0 if not np.isfinite(v) else float(v) for v in values]
 
 
-def _predict_from_bars(model, meta: dict, today: pd.DataFrame, horizon: int) -> dict:
+def _predict_from_bars(model, meta: dict, today: pd.DataFrame, horizon: int,
+                        prev_close: float | None = None) -> dict:
     """Núcleo recursivo, aislado de la red para poder probarlo."""
+    if len(today) == 0:
+        raise ValueError("No hay barras de la sesión de hoy: `today` está vacío.")
+
     horizon = clamp_horizon(horizon)
 
     sigma = float(meta.get("sigma_1m", 0.0) or 0.0)
@@ -150,7 +163,7 @@ def _predict_from_bars(model, meta: dict, today: pd.DataFrame, horizon: int) -> 
     rows, clamped = [], 0
 
     for _ in range(horizon):
-        x = np.asarray([incremental_features(work)], dtype=float)
+        x = np.asarray([incremental_features(work, prev_close)], dtype=float)
         raw = float(model.predict(x)[0])
         ret = float(np.clip(raw, -cap, cap))
         if ret != raw:
@@ -179,8 +192,16 @@ def _predict_from_bars(model, meta: dict, today: pd.DataFrame, horizon: int) -> 
     }
 
 
-def fetch_today_1m_bars(ticker: str) -> pd.DataFrame:
-    """Barras de 1 min de la última sesión regular disponible."""
+def fetch_today_1m_bars(ticker: str) -> tuple[pd.DataFrame, float | None]:
+    """
+    Barras de 1 min de la última sesión regular disponible, junto con el
+    cierre de la sesión ANTERIOR (para el feature `gap`).
+
+    Se descargan 5 días para tener margen frente a fines de semana y
+    festivos; el cierre previo sale de esa misma descarga, antes de recortar
+    al último día — tirarlo ahí sería perder el único dato que permite
+    calcular `gap` en inferencia.
+    """
     if not POLYGON_API_KEY:
         raise RuntimeError("Falta POLYGON_API_KEY")
 
@@ -201,14 +222,22 @@ def fetch_today_1m_bars(ticker: str) -> pd.DataFrame:
     df = filter_regular_session(df)
 
     last_day = df["dt_et"].dt.date.max()
-    return df[df["dt_et"].dt.date == last_day].reset_index(drop=True)
+
+    prev_close = None
+    prev_mask = df["dt_et"].dt.date < last_day
+    if prev_mask.any():
+        prev_day = df.loc[prev_mask, "dt_et"].dt.date.max()
+        prev_close = float(df.loc[df["dt_et"].dt.date == prev_day, "close"].iloc[-1])
+
+    today = df[df["dt_et"].dt.date == last_day].reset_index(drop=True)
+    return today, prev_close
 
 
 def predict_next_minutes(ticker: str, horizon: int = DEFAULT_HORIZON) -> dict:
     model, meta = load_1m_model(ticker)
-    today = fetch_today_1m_bars(ticker)
+    today, prev_close = fetch_today_1m_bars(ticker)
 
-    out = _predict_from_bars(model, meta, today, horizon)
+    out = _predict_from_bars(model, meta, today, horizon, prev_close)
     out["ticker"] = ticker.upper()
     out["generated_at"] = dt.datetime.utcnow().isoformat() + "Z"
     out["note"] = NOTE.format(horizon=out["horizon_min"])

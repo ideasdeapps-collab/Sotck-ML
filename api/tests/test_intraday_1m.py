@@ -97,3 +97,55 @@ def test_el_horizonte_se_limita_al_maximo():
     assert intraday_1m.clamp_horizon(500) == intraday_1m.MAX_HORIZON
     assert intraday_1m.clamp_horizon(0) == 1
     assert intraday_1m.clamp_horizon(30) == 30
+
+
+def test_la_equivalencia_se_mantiene_con_gap_real():
+    # El fixture de un solo día hace que ambas rutas den gap=0 y "coincidan"
+    # trivialmente. Con dos sesiones y hueco de apertura, el gap es la feature
+    # que puede desalinear entrenamiento e inferencia sin que nada falle.
+    d1 = _session("2026-08-27", n=40)
+    d2 = _session("2026-08-28", n=40)
+    d2[["open", "high", "low", "close"]] += 5.0  # hueco al alza
+    hist = pd.concat([d1, d2], ignore_index=True)
+
+    prev_close = float(d1["close"].iloc[-1])
+    esperado = add_1m_features(hist)[FEATURE_COLS].iloc[-1].fillna(0.0).values
+    obtenido = np.asarray(intraday_1m.incremental_features(d2, prev_close), dtype=float)
+
+    assert obtenido == pytest.approx(esperado, rel=1e-9, abs=1e-12)
+
+
+@pytest.mark.parametrize("n", [1, 2, 3, 6, 16])
+def test_la_equivalencia_se_mantiene_con_pocas_barras(n):
+    # Zona donde los lags (i<5) y los agregados (i<15) aún no tienen historia.
+    df = _session(n=n)
+    esperado = add_1m_features(df)[FEATURE_COLS].iloc[-1].fillna(0.0).values
+    obtenido = np.asarray(intraday_1m.incremental_features(df), dtype=float)
+
+    assert obtenido == pytest.approx(esperado, rel=1e-9, abs=1e-12)
+
+
+def test_la_equivalencia_se_mantiene_sobre_barras_sinteticas():
+    # Lo que de verdad pasa dentro del bucle: a partir del segundo paso, `work`
+    # mezcla barras reales con las sintéticas que el propio bucle añadió.
+    work = _session(n=60)
+    ultimo = pd.Timestamp(work["dt_et"].iloc[-1])
+    precio = float(work["close"].iloc[-1])
+
+    for paso in range(1, 6):
+        precio *= 1.0005
+        ultimo += pd.Timedelta(minutes=1)
+        work = pd.concat([work, pd.DataFrame([{
+            "dt_et": ultimo, "open": precio, "high": precio,
+            "low": precio, "close": precio, "volume": 1000.0,
+        }])], ignore_index=True)
+
+        esperado = add_1m_features(work)[FEATURE_COLS].iloc[-1].fillna(0.0).values
+        obtenido = np.asarray(intraday_1m.incremental_features(work), dtype=float)
+        assert obtenido == pytest.approx(esperado, rel=1e-9, abs=1e-12), f"paso {paso}"
+
+
+def test_predict_from_bars_rechaza_una_sesion_vacia():
+    vacia = _session(n=0)
+    with pytest.raises(ValueError):
+        intraday_1m._predict_from_bars(_Modelo(0.0), {"sigma_1m": 0.001}, vacia, 5)
