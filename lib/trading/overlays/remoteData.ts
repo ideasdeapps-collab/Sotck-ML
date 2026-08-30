@@ -3,6 +3,7 @@ import {
   fetchForecast,
   fetchIntraday,
   fetchMlpCurve,
+  fetchOneMinuteCurve,
   fetchPatterns,
   fetchSessionCurve,
   fetchTechnical,
@@ -13,6 +14,7 @@ import type {
   ForecastResponse,
   IntradayResponse,
   MlResult,
+  OneMinutePrediction,
   PatternsResponse,
   PredictCurve,
   SessionPrediction,
@@ -29,6 +31,7 @@ export type RemoteOverlayData = {
   technical?: MlResult<TechnicalResponse>;
   patterns?: MlResult<PatternsResponse>;
   intraday?: MlResult<IntradayResponse>;
+  oneMinute?: MlResult<OneMinutePrediction>;
 };
 
 /** Which remote sources the currently enabled, currently allowed overlays need. */
@@ -79,6 +82,8 @@ export async function loadRemoteOverlays(
         return ['patterns', await fetchPatterns(ticker, interval, interval >= 15 ? 2 : 1)];
       case 'intraday':
         return ['intraday', await fetchIntraday(ticker, interval, interval >= 15 ? 2 : 1)];
+      case 'oneMinute':
+        return ['oneMinute', await fetchOneMinuteCurve(ticker)];
       default:
         return [source, undefined];
     }

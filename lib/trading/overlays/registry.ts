@@ -11,7 +11,7 @@ import type { TickerCapabilities } from '@/types/trading';
  * source, so enabling both Fibonacci and ZigZag costs one request, not two.
  */
 
-export type OverlaySource = 'local' | 'xgb' | 'mlp' | 'extended' | 'forecast' | 'session' | 'technical' | 'patterns' | 'intraday';
+export type OverlaySource = 'local' | 'xgb' | 'mlp' | 'extended' | 'forecast' | 'session' | 'technical' | 'patterns' | 'intraday' | 'oneMinute';
 
 export type OverlayId =
   | 'plan'
@@ -34,7 +34,8 @@ export type OverlayId =
   | 'fibonacci'
   | 'zigzag'
   | 'sma'
-  | 'elliottStart';
+  | 'elliottStart'
+  | 'intraday1m';
 
 export type OverlayGroup = 'Plan de trading' | 'Indicadores' | 'Day trading' | 'Estructura' | 'Curvas predictivas';
 
@@ -78,6 +79,7 @@ export const OVERLAYS: OverlayDef[] = [
   { id: 'zigzag', label: 'ZigZag + Elliott', group: 'Curvas predictivas', source: 'technical', timeframes: ['1d'], capability: 'xgb', hint: 'Estructura de swings y conteo de ondas (experimental)' },
   { id: 'elliottStart', label: 'Elliott · probabilidad de inicio', group: 'Curvas predictivas', source: 'local', hint: 'Probabilidad vela a vela de que arranque un impulso 1-2-3, y si el recuento se confirmó al superar la onda 1' },
   { id: 'sma', label: 'SMA 20/50/200', group: 'Curvas predictivas', source: 'technical', timeframes: ['1d'], capability: 'xgb', hint: 'Medias simples calculadas por la API' },
+  { id: 'intraday1m', label: 'Curva ML 1m (+30 min)', group: 'Curvas predictivas', source: 'oneMinute', timeframes: ['1m'], capability: 'oneMinute', hint: 'Proyección recursiva de los próximos 30 minutos con el modelo de 1 min. Datos con ~15 min de retraso; señal débil, contexto y no certeza' },
 ];
 
 export const OVERLAY_GROUPS: OverlayGroup[] = ['Plan de trading', 'Indicadores', 'Day trading', 'Estructura', 'Curvas predictivas'];
@@ -111,6 +113,7 @@ export const DEFAULT_OVERLAYS: OverlayState = {
   zigzag: false,
   sma: false,
   elliottStart: false,
+  intraday1m: false,
 };
 
 /** Why an overlay cannot be shown right now, or null when it can. */
