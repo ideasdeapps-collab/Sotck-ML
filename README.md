@@ -261,12 +261,20 @@ recta sin información, y el bucle no cabría en el tiempo de respuesta del prox
 sirve datos con ~15 minutos de retraso, así que la curva arranca en un punto que ya es pasado; y a
 un minuto la exactitud direccional ronda el 50 %. Es contexto de mercado, no una señal de entrada.
 
-Entrenar otros tickers:
+Entrenar otros tickers — dos formas:
+
+1. **Local, para un ticker suelto:**
 ```bash
 python training/train_xgb_1m.py --ticker AMD --days 60
 ```
-O de forma permanente, añadiéndolos a `ONE_MIN_TICKERS` en `.github/workflows/retrain.yml`. El
-overlay aparece solo para cualquier ticker que tenga artefacto: `/models-1m` lista el directorio.
+
+2. **De forma permanente**, agregando el ticker a `ONE_MIN_TICKERS` en `.github/workflows/retrain.yml` — entra en el reentreno automático.
+
+> ⚠️ El parámetro `tickers` del despacho manual del workflow (`workflow_dispatch`) solo afecta a los modelos diarios; el modelo de 1 minuto siempre usa `ONE_MIN_TICKERS`. Si despachaste manualmente con una lista de tickers y no ves entrenamientos de 1 minuto, es esperado.
+
+Cada ticker de 1 minuto son ~23 000 barras, así que la lista es pequeña por defecto para no disparar costes de paginación. Quien quiera ampliarla, sepa lo que está pidiendo.
+
+El overlay aparece solo para tickers que tengan artefacto: `/models-1m` lista el directorio.
 
 ## ⚠️ Aviso
 Esta herramienta es para análisis y educación. Los mercados son estocásticos; **ningún modelo garantiza precios futuros**. Úsala como apoyo a la decisión, no como consejo de inversión.
