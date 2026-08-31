@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -105,3 +106,54 @@ def test_respuesta_sin_results(monkeypatch):
     monkeypatch.setattr(polygon_client.requests, "get", get)
 
     assert polygon_client.get_paginated("https://api.polygon.io/f?apiKey=K")["results"] == []
+
+
+class _ErrorResponse:
+    """Simula una respuesta que falla en raise_for_status, como `requests` real:
+    el mensaje de `HTTPError` incluye la URL completa (clave incluida)."""
+
+    def __init__(self, status_code, url):
+        self.status_code = status_code
+        self._url = url
+
+    def raise_for_status(self):
+        raise requests.exceptions.HTTPError(
+            f"{self.status_code} Client Error: Unauthorized for url: {self._url}")
+
+    def json(self):
+        raise AssertionError("no debería llamarse: raise_for_status ya falló")
+
+
+def test_error_http_no_filtra_la_clave(monkeypatch):
+    url = "https://api.polygon.io/v2/aggs/ticker/NVDA?apiKey=SECRETO123"
+
+    def get(u, timeout=30):
+        return _ErrorResponse(401, u)
+
+    monkeypatch.setattr(polygon_client.requests, "get", get)
+
+    with pytest.raises(requests.exceptions.HTTPError) as exc_info:
+        polygon_client.get_json(url)
+
+    mensaje = str(exc_info.value)
+    assert "SECRETO123" not in mensaje
+    assert "apiKey=<oculta>" in mensaje
+
+
+def test_error_de_red_no_filtra_la_clave(monkeypatch):
+    url = "https://api.polygon.io/v2/aggs/ticker/NVDA?apiKey=SECRETO123"
+
+    def get(u, timeout=30):
+        raise requests.exceptions.ConnectionError(
+            f"HTTPSConnectionPool(host='api.polygon.io', port=443): "
+            f"Max retries exceeded with url: /v2/aggs/ticker/NVDA?apiKey=SECRETO123 "
+            f"(Caused by NewConnectionError('...'))")
+
+    monkeypatch.setattr(polygon_client.requests, "get", get)
+
+    with pytest.raises(requests.exceptions.ConnectionError) as exc_info:
+        polygon_client.get_json(url)
+
+    mensaje = str(exc_info.value)
+    assert "SECRETO123" not in mensaje
+    assert "apiKey=<oculta>" in mensaje

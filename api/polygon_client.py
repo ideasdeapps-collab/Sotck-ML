@@ -18,6 +18,7 @@ Variables de entorno:
 
 from __future__ import annotations
 import os
+import re
 import time
 import threading
 from collections import deque
@@ -55,6 +56,38 @@ def _throttle() -> None:
         _calls.append(time.time())
 
 
+_APIKEY_RE = re.compile(r"apiKey=[^&\s\"']+")
+
+
+def _scrub_api_key(text: str) -> str:
+    """Sustituye cualquier `apiKey=...` de un texto por `apiKey=<oculta>`.
+
+    `requests` mete la URL completa (clave incluida) en el mensaje de
+    `HTTPError` (vía `raise_for_status`) y también en los errores de red
+    (`ConnectionError`/`Timeout`, p. ej. "Max retries exceeded with url:
+    ...&apiKey=..."). Ambos casos pasan por aquí antes de salir de este
+    módulo.
+    """
+    return _APIKEY_RE.sub("apiKey=<oculta>", text)
+
+
+def _sanitized(exc: Exception) -> Exception:
+    """Reconstruye `exc` con la clave oculta en el mensaje, mismo tipo.
+
+    Se propaga el mismo tipo de excepción (para que quien capture
+    `requests.exceptions.HTTPError` o `RequestException` lo siga viendo) y se
+    encadena la original como causa (`raise ... from exc`), sin silenciar
+    nada: solo se cambia el texto.
+    """
+    scrubbed = _scrub_api_key(str(exc))
+    try:
+        return type(exc)(scrubbed)
+    except Exception:
+        # Algún tipo de excepción no acepta un único string en el
+        # constructor; no perdemos el saneamiento por eso.
+        return RuntimeError(scrubbed)
+
+
 def get_json(url: str, ttl: int = TTL_INTRADAY, timeout: int = 30) -> dict:
     """GET con caché por TTL y respeto estricto del rate-limit."""
     now = time.time()
@@ -63,13 +96,19 @@ def get_json(url: str, ttl: int = TTL_INTRADAY, timeout: int = 30) -> dict:
         return hit[1]
 
     _throttle()
-    r = requests.get(url, timeout=timeout)
-    # Si Polygon responde 429 (too many requests), espera y reintenta una vez.
-    if r.status_code == 429:
-        time.sleep(WINDOW / MAX_CALLS + BUFFER)
-        _throttle()
+    try:
         r = requests.get(url, timeout=timeout)
-    r.raise_for_status()
+        # Si Polygon responde 429 (too many requests), espera y reintenta una vez.
+        if r.status_code == 429:
+            time.sleep(WINDOW / MAX_CALLS + BUFFER)
+            _throttle()
+            r = requests.get(url, timeout=timeout)
+        r.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        # Cubre tanto el HTTPError de raise_for_status() como los errores de
+        # red (ConnectionError, Timeout): todos llevan la URL —y la clave—
+        # en su mensaje.
+        raise _sanitized(e) from e
     data = r.json()
     _cache[url] = (time.time(), data)
     return data
