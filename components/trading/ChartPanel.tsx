@@ -348,10 +348,14 @@ export default function ChartPanel() {
     if (!overlays.intraday1m || !allowed('intraday1m') || !result?.ok) return '';
 
     const data = result.data;
-    const hora = new Date(data.last_real_time).toLocaleTimeString('es-ES', {
+    // `last_real_time` viene con offset ET; sin fijar la zona, el navegador la
+    // muestra en la suya (y el eje del gráfico usa UTC): tres horas distintas
+    // para el mismo instante si no se etiqueta sin ambigüedad.
+    const hora = `${new Date(data.last_real_time).toLocaleTimeString('es-ES', {
       hour: '2-digit',
       minute: '2-digit',
-    });
+      timeZone: 'America/New_York',
+    })} ET`;
     const acierto = data.model_meta?.directional_accuracy;
 
     // El acierto puede faltar (sin meta_1m_<ticker>.json entrenado) o venir
