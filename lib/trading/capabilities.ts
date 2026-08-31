@@ -9,7 +9,7 @@ import type { MlResult, TickerCapabilities } from '@/types/trading';
  * trained model in `api/artifacts/`. Without this gate, five of the seven
  * tickers would show overlay toggles that can only ever return a 404.
  *
- * The four /models* endpoints are cheap and cached by the proxy for 5 minutes;
+ * The five /models* endpoints are cheap and cached by the proxy for 5 minutes;
  * this adds a process-lifetime cache so switching tickers costs nothing.
  */
 
@@ -18,6 +18,7 @@ export type CapabilityMap = {
   mlp: Set<string>;
   intraday: Set<string>;
   extended: Set<string>;
+  oneMinute: Set<string>;
   /** Empty when the ML API could not be reached at all. */
   reachable: boolean;
   reason?: string;
@@ -28,6 +29,7 @@ const EMPTY: CapabilityMap = {
   mlp: new Set(),
   intraday: new Set(),
   extended: new Set(),
+  oneMinute: new Set(),
   reachable: false,
 };
 
@@ -44,14 +46,15 @@ export async function loadCapabilities(force = false): Promise<CapabilityMap> {
   if (!force && inFlight) return inFlight;
 
   inFlight = (async () => {
-    const [xgb, mlp, intraday, extended] = await Promise.all([
+    const [xgb, mlp, intraday, extended, oneMinute] = await Promise.all([
       fetchTrainedTickers('models'),
       fetchTrainedTickers('models-mlp'),
       fetchTrainedTickers('models-intraday'),
       fetchTrainedTickers('models-extended'),
+      fetchTrainedTickers('models-1m'),
     ]);
 
-    // If /models itself failed the service is down; the other three tell us
+    // If /models itself failed the service is down; the other four tell us
     // nothing useful on their own.
     if (!xgb.ok) {
       cached = { ...EMPTY, reason: xgb.reason };
@@ -67,6 +70,7 @@ export async function loadCapabilities(force = false): Promise<CapabilityMap> {
       mlp: toSet(mlp),
       intraday: toSet(intraday),
       extended: toSet(extended),
+      oneMinute: toSet(oneMinute),
       reachable: true,
     };
     cachedAt = Date.now();
@@ -86,5 +90,6 @@ export function capabilitiesFor(map: CapabilityMap, ticker: string): TickerCapab
     mlp: map.mlp.has(symbol),
     intraday: map.intraday.has(symbol),
     extended: map.extended.has(symbol),
+    oneMinute: map.oneMinute.has(symbol),
   };
 }

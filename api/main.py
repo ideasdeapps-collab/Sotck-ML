@@ -33,6 +33,7 @@ from mlp import predict_curve_mlp               # noqa: E402  ← curva red neur
 from validate import validate_models           # noqa: E402  ← predicho vs real
 from psychology import psychology_analysis      # noqa: E402  ← Índice de Psicología (IPM)
 from intraday_ml import predict_session, fetch_today_bars, fetch_live_price  # noqa: E402
+from intraday_1m import predict_next_minutes, DEFAULT_HORIZON  # noqa: E402  ← modelo de 1 min
 from extended_ml import predict_curve_extended   # noqa: E402  ← modelo AH+PM
 from premarket import premarket_prediction      # noqa: E402  ← ancla premarket (gap)
 from patterns.pattern_engine import PatternEngine   # noqa: E402  ← FVG / OB / liquidez
@@ -214,7 +215,8 @@ def health():
 @app.get("/models")
 def list_models():
     return {"available": sorted(p.stem.replace("xgb_", "") for p in ARTIFACT_DIR.glob("xgb_*.joblib")
-                                if not p.stem.startswith("xgb_intraday_") and not p.stem.startswith("xgb_ext_"))}
+                                if not p.stem.startswith("xgb_intraday_") and not p.stem.startswith("xgb_ext_")
+                                and not p.stem.startswith("xgb_1m_"))}
 
 
 @app.get("/models-mlp")
@@ -228,6 +230,13 @@ def list_models_intraday():
     """Tickers que tienen modelo INTRADÍA (15 min) entrenado."""
     return {"available": sorted(p.stem.replace("xgb_intraday_", "")
                                 for p in ARTIFACT_DIR.glob("xgb_intraday_*.joblib"))}
+
+
+@app.get("/models-1m")
+def list_models_1m():
+    """Tickers que tienen modelo de 1 MINUTO entrenado."""
+    return {"available": sorted(p.stem.replace("xgb_1m_", "")
+                                for p in ARTIFACT_DIR.glob("xgb_1m_*.joblib"))}
 
 
 @app.get("/models-extended")
@@ -253,7 +262,8 @@ def dashboard():
         if (meta_path.stem.startswith("meta_mlp_")
                 or meta_path.stem.startswith("meta_psych_")
                 or meta_path.stem.startswith("meta_intraday_")
-                or meta_path.stem.startswith("meta_ext_")):
+                or meta_path.stem.startswith("meta_ext_")
+                or meta_path.stem.startswith("meta_1m_")):
             continue
         t = meta_path.stem.replace("meta_", "")
         with open(meta_path) as f:
@@ -335,6 +345,17 @@ def predict_intraday(ticker: str):
     """Curva recursiva intradía de 15 min del resto de la sesión (con clamp)."""
     try:
         return predict_session(ticker)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/predict-1m")
+def predict_1m(ticker: str, horizon: int = DEFAULT_HORIZON):
+    """Curva recursiva de 1 min de los próximos `horizon` minutos (tope 60)."""
+    try:
+        return predict_next_minutes(ticker, horizon)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e))
     except Exception as e:

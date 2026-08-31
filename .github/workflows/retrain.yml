@@ -24,6 +24,9 @@ env:
   INTRADAY_DAYS: "120"
   # Extendido (RTH+AH+PM, plan Starter): subconjunto sensible a earnings/gaps.
   EXTENDED_TICKERS: "NVDA TSM AVGO META QQQ AMAT MU"
+  # 1 minuto (plan Starter): pocos tickers muy líquidos (~23 000 barras c/u).
+  ONE_MIN_TICKERS: "NVDA QQQ SNDK"
+  ONE_MIN_DAYS: 60
 
 # Permite que el GITHUB_TOKEN haga push de los artefactos al repo.
 # (Además: Settings → Actions → General → Workflow permissions → Read and write.)
@@ -137,6 +140,24 @@ jobs:
               || echo "::warning::train_xgb_extended falló para $T"
             echo "::endgroup::"
             sleep 8
+          done
+
+      # ------------------------------------------------------------------- #
+      # ML DE 1 MINUTO — pocos tickers: son ~23 000 barras por cada uno.
+      # Aislado del resto: si falla, no afecta a los modelos anteriores.
+      # ------------------------------------------------------------------- #
+      - name: Train 1-minute — tickers líquidos
+        if: ${{ env.ONE_MIN_TICKERS != '' }}
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+        run: |
+          echo "Entrenando modelos de 1 min (${ONE_MIN_DAYS} días): $ONE_MIN_TICKERS"
+          for T in $ONE_MIN_TICKERS; do
+            echo "::group::1m $T"
+            python training/train_xgb_1m.py --ticker "$T" --days "$ONE_MIN_DAYS" \
+              || echo "::warning::train_xgb_1m falló para $T"
+            echo "::endgroup::"
+            sleep 5
           done
 
       - name: Verify artifacts exist

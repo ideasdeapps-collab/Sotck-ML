@@ -60,6 +60,7 @@ const COLORS = {
   // como la misma familia.
   elliott: '#c084fc',
   elliottRef: 'rgba(148,163,184,0.4)',
+  curve1m: '#2dd4bf',
 } as const;
 
 /** Every layer id an overlay can own, so toggling it off removes all of them. */
@@ -85,6 +86,7 @@ const LAYER_IDS: Record<OverlayId, string[]> = {
   zigzag: ['zigzag', 'elliott'],
   sma: ['sma20', 'sma50', 'sma200'],
   elliottStart: ['elliott-prob', 'elliott-prob-50', 'elliott-prob-70', 'elliott-waves', 'elliott-outcome'],
+  intraday1m: ['curve-1m'],
 };
 
 /** Panel propio del oscilador de Elliott, debajo de las velas. */
@@ -670,6 +672,37 @@ export function paintOverlays({
 
     layer.line('curve-session', dedupe(points), { color: COLORS.session, lineWidth: 2, dashed: true, title: 'Sesión ML' });
   } else clear('sessionCurve');
+
+  // --- Curva ML de 1 minuto -------------------------------------------------
+  // Misma forma que la curva de sesión: arranca en la última vela real para que
+  // se lea como continuación y no como una serie suelta.
+  const oneMinute = remote.oneMinute?.ok ? remote.oneMinute.data : null;
+
+  if (on('intraday1m') && oneMinute) {
+    const points: LinePoint[] = [];
+
+    try {
+      const time = snap(oneMinute.last_real_time);
+      if (time) points.push({ time, value: oneMinute.last_real_close });
+    } catch {
+      // Sin punto de arranque la curva flota; mejor dibujarla sin él que no dibujarla.
+    }
+
+    for (const point of oneMinute.predicted) {
+      try {
+        points.push({ time: toChartTime(point.time), value: point.close });
+      } catch {
+        // Una marca de tiempo ilegible no puede tumbar el resto de la curva.
+      }
+    }
+
+    layer.line('curve-1m', dedupe(points), {
+      color: COLORS.curve1m,
+      lineWidth: 2,
+      dashed: true,
+      title: `ML 1m +${oneMinute.horizon_min}m`,
+    });
+  } else clear('intraday1m');
 
   // --- Elliott: probabilidad de inicio -------------------------------------
   // Local sobre las velas cargadas, en un panel propio bajo el gráfico porque

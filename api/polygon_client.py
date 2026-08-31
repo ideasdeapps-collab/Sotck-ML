@@ -18,9 +18,11 @@ Variables de entorno:
 
 from __future__ import annotations
 import os
+import re
 import time
 import threading
 from collections import deque
+from urllib.parse import urlparse, parse_qs
 
 import requests
 
@@ -54,6 +56,38 @@ def _throttle() -> None:
         _calls.append(time.time())
 
 
+_APIKEY_RE = re.compile(r"apiKey=[^&\s\"']+")
+
+
+def _scrub_api_key(text: str) -> str:
+    """Sustituye cualquier `apiKey=...` de un texto por `apiKey=<oculta>`.
+
+    `requests` mete la URL completa (clave incluida) en el mensaje de
+    `HTTPError` (vía `raise_for_status`) y también en los errores de red
+    (`ConnectionError`/`Timeout`, p. ej. "Max retries exceeded with url:
+    ...&apiKey=..."). Ambos casos pasan por aquí antes de salir de este
+    módulo.
+    """
+    return _APIKEY_RE.sub("apiKey=<oculta>", text)
+
+
+def _sanitized(exc: Exception) -> Exception:
+    """Reconstruye `exc` con la clave oculta en el mensaje, mismo tipo.
+
+    Se propaga el mismo tipo de excepción (para que quien capture
+    `requests.exceptions.HTTPError` o `RequestException` lo siga viendo) y se
+    encadena la original como causa (`raise ... from exc`), sin silenciar
+    nada: solo se cambia el texto.
+    """
+    scrubbed = _scrub_api_key(str(exc))
+    try:
+        return type(exc)(scrubbed)
+    except Exception:
+        # Algún tipo de excepción no acepta un único string en el
+        # constructor; no perdemos el saneamiento por eso.
+        return RuntimeError(scrubbed)
+
+
 def get_json(url: str, ttl: int = TTL_INTRADAY, timeout: int = 30) -> dict:
     """GET con caché por TTL y respeto estricto del rate-limit."""
     now = time.time()
@@ -62,16 +96,60 @@ def get_json(url: str, ttl: int = TTL_INTRADAY, timeout: int = 30) -> dict:
         return hit[1]
 
     _throttle()
-    r = requests.get(url, timeout=timeout)
-    # Si Polygon responde 429 (too many requests), espera y reintenta una vez.
-    if r.status_code == 429:
-        time.sleep(WINDOW / MAX_CALLS + BUFFER)
-        _throttle()
+    try:
         r = requests.get(url, timeout=timeout)
-    r.raise_for_status()
+        # Si Polygon responde 429 (too many requests), espera y reintenta una vez.
+        if r.status_code == 429:
+            time.sleep(WINDOW / MAX_CALLS + BUFFER)
+            _throttle()
+            r = requests.get(url, timeout=timeout)
+        r.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        # Cubre tanto el HTTPError de raise_for_status() como los errores de
+        # red (ConnectionError, Timeout): todos llevan la URL —y la clave—
+        # en su mensaje.
+        raise _sanitized(e) from e
     data = r.json()
     _cache[url] = (time.time(), data)
     return data
+
+
+def get_paginated(url: str, ttl: int = TTL_INTRADAY, max_pages: int = 20) -> dict:
+    """
+    GET siguiendo el `next_url` de Polygon hasta agotar los resultados.
+
+    `get_json` sirve para una respuesta que cabe en una llamada. 60 días de
+    barras de un minuto no caben: con `limit=50000` Polygon devuelve la primera
+    página y un cursor, y quedarse solo con esa página es entrenar sobre un
+    recorte arbitrario sin que nada lo indique.
+
+    El tope de páginas evita que un cursor en bucle cuelgue un entrenamiento;
+    si se alcanza, `truncated` lo dice en vez de callarlo.
+    """
+    # La clave viaja en la URL inicial (todas las llamadas la incluyen); si no
+    # está ahí, se recurre a la variable de entorno como respaldo.
+    api_key = parse_qs(urlparse(url).query).get("apiKey", [""])[0] \
+        or os.getenv("POLYGON_API_KEY", "")
+    results: list = []
+    next_url = url
+    pages = 0
+
+    while next_url and pages < max_pages:
+        data = get_json(next_url, ttl=ttl)
+        results.extend(data.get("results") or [])
+        pages += 1
+
+        next_url = data.get("next_url")
+        if next_url and "apiKey=" not in next_url:
+            # Polygon no propaga la clave en el cursor.
+            sep = "&" if "?" in next_url else "?"
+            next_url = f"{next_url}{sep}apiKey={api_key}"
+
+    truncated = bool(next_url) and pages >= max_pages
+    if truncated:
+        print(f"[polygon] AVISO: se alcanzó el tope de {max_pages} páginas; faltan datos.")
+
+    return {"results": results, "pages": pages, "truncated": truncated}
 
 
 def cache_stats() -> dict:

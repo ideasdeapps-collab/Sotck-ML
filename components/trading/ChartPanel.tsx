@@ -336,6 +336,43 @@ export default function ChartPanel() {
     );
   })();
 
+  /**
+   * Avisos de la curva de 1 minuto.
+   *
+   * El retraso del plan Starter y una exactitud direccional en torno al 50 %
+   * cambian por completo cómo hay que leer esa línea, así que van donde se lee
+   * — no enterrados en el JSON de la respuesta.
+   */
+  const oneMinuteLegend = (() => {
+    const result = remote.oneMinute;
+    if (!overlays.intraday1m || !allowed('intraday1m') || !result?.ok) return '';
+
+    const data = result.data;
+    // `last_real_time` viene con offset ET; sin fijar la zona, el navegador la
+    // muestra en la suya (y el eje del gráfico usa UTC): tres horas distintas
+    // para el mismo instante si no se etiqueta sin ambigüedad.
+    const hora = `${new Date(data.last_real_time).toLocaleTimeString('es-ES', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'America/New_York',
+    })} ET`;
+    const acierto = data.model_meta?.directional_accuracy;
+
+    // El acierto puede faltar (sin meta_1m_<ticker>.json entrenado) o venir
+    // como cifra cruda que a un lector desprevenido le suena a ventaja. Las
+    // dos situaciones se resuelven con la misma cautela explícita, para que
+    // la ausencia de dato no calle la advertencia.
+    const lecturaAcierto =
+      acierto != null
+        ? `acierto direccional ${(acierto * 100).toFixed(0)}% — a un minuto, un valor cercano al 50% es ruido, no ventaja`
+        : 'sin acierto direccional reportado para este ticker — trátalo con la misma cautela que un 50%';
+
+    return (
+      `Curva ML 1m · última barra real ${hora} · +${data.horizon_min} min · ${lecturaAcierto}` +
+      ' — datos con ~15 min de retraso (plan Starter); contexto, no señal de entrada'
+    );
+  })();
+
   /** Failures that the toggles alone cannot explain. */
   const overlayErrors = Object.entries(remote)
     .filter(([, result]) => result && !result.ok)
@@ -371,6 +408,7 @@ export default function ChartPanel() {
       )}
 
       {elliottLegend && <p className="chart-panel__elliott">{elliottLegend}</p>}
+      {oneMinuteLegend && <p className="chart-panel__onemin">{oneMinuteLegend}</p>}
 
       {overlayErrors.length > 0 && (
         <p className="chart-panel__error">Overlays sin datos — {overlayErrors.join(' · ')}</p>
