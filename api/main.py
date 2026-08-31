@@ -215,7 +215,8 @@ def health():
 @app.get("/models")
 def list_models():
     return {"available": sorted(p.stem.replace("xgb_", "") for p in ARTIFACT_DIR.glob("xgb_*.joblib")
-                                if not p.stem.startswith("xgb_intraday_") and not p.stem.startswith("xgb_ext_"))}
+                                if not p.stem.startswith("xgb_intraday_") and not p.stem.startswith("xgb_ext_")
+                                and not p.stem.startswith("xgb_1m_"))}
 
 
 @app.get("/models-mlp")
@@ -261,7 +262,8 @@ def dashboard():
         if (meta_path.stem.startswith("meta_mlp_")
                 or meta_path.stem.startswith("meta_psych_")
                 or meta_path.stem.startswith("meta_intraday_")
-                or meta_path.stem.startswith("meta_ext_")):
+                or meta_path.stem.startswith("meta_ext_")
+                or meta_path.stem.startswith("meta_1m_")):
             continue
         t = meta_path.stem.replace("meta_", "")
         with open(meta_path) as f:
