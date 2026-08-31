@@ -66,6 +66,19 @@ def load_1m_model(ticker: str):
 
     model = joblib.load(mp)
     meta = json.load(open(mm)) if mm.exists() else {}
+
+    # El meta guarda el orden de features con el que se entrenó, precisamente
+    # para que la inferencia no pueda usar otro sin que nada lo note (ver
+    # spec). Si alguien reordena FEATURE_COLS sin reentrenar, la longitud
+    # cuadraría igual y XGBoost no protestaría: serviría basura en silencio.
+    meta_cols = meta.get("feature_cols")
+    if meta_cols is not None and list(meta_cols) != list(FEATURE_COLS):
+        raise FileNotFoundError(
+            f"El modelo de 1 min de {t} se entrenó con otro orden de features "
+            f"({mm.name}) y ya no coincide con FEATURE_COLS actual. Reentrena "
+            f"antes de servir predicciones: "
+            f"python training/train_xgb_1m.py --ticker {t} --days 60")
+
     _CACHE[t] = (model, meta)
     return model, meta
 
@@ -135,7 +148,12 @@ def incremental_features(work: pd.DataFrame, prev_close: float | None = None) ->
     values = [tod_sin, tod_cos, bars_left, ret_from_open, dist_vwap,
               range_rel, vol_rel, gap, *lags, *aggregates]
 
-    assert len(values) == len(FEATURE_COLS), "features incrementales desalineadas"
+    if len(values) != len(FEATURE_COLS):
+        # Un `assert` desaparece bajo `python -O`; esto es la misma defensa
+        # sin ese punto ciego.
+        raise RuntimeError(
+            f"features incrementales desalineadas: {len(values)} calculadas, "
+            f"{len(FEATURE_COLS)} esperadas en FEATURE_COLS")
     return [0.0 if not np.isfinite(v) else float(v) for v in values]
 
 
@@ -146,6 +164,13 @@ def _predict_from_bars(model, meta: dict, today: pd.DataFrame, horizon: int,
         raise ValueError("No hay barras de la sesión de hoy: `today` está vacío.")
 
     horizon = clamp_horizon(horizon)
+
+    # Recorta al horizonte que de verdad queda de sesión regular (BARS_PER_SESSION
+    # barras, 9:30-16:00 ET). Sin esto, con el retraso del plan Starter (~15 min)
+    # la curva sigue proyectando después de las 16:00 sobre un día ya cerrado —y
+    # de forma permanente fuera de horario— como si fuera una proyección viva.
+    bars_left_session = max(BARS_PER_SESSION - len(today), 0)
+    horizon = min(horizon, bars_left_session)
 
     sigma = float(meta.get("sigma_1m", 0.0) or 0.0)
     if sigma <= 0 or not np.isfinite(sigma):

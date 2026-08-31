@@ -4,9 +4,11 @@ El test que importa es el de equivalencia: `incremental_features` y
 `add_1m_features` tienen que dar exactamente lo mismo. Si divergen, el modelo
 recibe entradas distintas de las que vio al entrenar y sirve basura sin fallar.
 """
+import json
 import sys
 from pathlib import Path
 
+import joblib
 import numpy as np
 import pandas as pd
 import pytest
@@ -16,7 +18,7 @@ sys.path.insert(0, str(API))
 sys.path.insert(0, str(API.parent / "training"))
 
 import intraday_1m
-from train_xgb_1m import FEATURE_COLS, add_1m_features
+from train_xgb_1m import BARS_PER_SESSION, FEATURE_COLS, add_1m_features
 
 
 def _session(date: str = "2026-08-28", n: int = 80) -> pd.DataFrame:
@@ -149,3 +151,40 @@ def test_predict_from_bars_rechaza_una_sesion_vacia():
     vacia = _session(n=0)
     with pytest.raises(ValueError):
         intraday_1m._predict_from_bars(_Modelo(0.0), {"sigma_1m": 0.001}, vacia, 5)
+
+
+def test_el_horizonte_se_recorta_al_cierre_de_sesion():
+    # A 5 barras del cierre (BARS_PER_SESSION=390), pedir 30 min de horizonte
+    # no puede proyectar más allá de las 16:00 ET.
+    n_real = BARS_PER_SESSION - 5
+    out = intraday_1m._predict_from_bars(_Modelo(0.0001), {"sigma_1m": 0.001},
+                                          _session(n=n_real), 30)
+
+    assert out["horizon_min"] == 5
+    assert len(out["predicted"]) == 5
+
+
+def test_sesion_completa_no_proyecta_nada():
+    # Sesión ya cerrada (390 barras reales): fuera de horario o con el
+    # retraso del plan Starter, no hay "próximos minutos" que inventar.
+    out = intraday_1m._predict_from_bars(_Modelo(0.0001), {"sigma_1m": 0.001},
+                                          _session(n=BARS_PER_SESSION), 30)
+
+    assert out["horizon_min"] == 0
+    assert out["predicted"] == []
+
+
+def test_load_1m_model_rechaza_features_desalineadas(tmp_path, monkeypatch):
+    # meta_1m_{T}.json guarda feature_cols precisamente para que la inferencia
+    # no pueda usar otro orden (spec). Si el meta declara otras features que
+    # las actuales de FEATURE_COLS, hay que negarse a servir en vez de dejar
+    # que XGBoost reciba entradas en el orden equivocado sin protestar.
+    monkeypatch.setattr(intraday_1m, "ARTIFACT_DIR", tmp_path)
+    intraday_1m._CACHE.clear()
+
+    joblib.dump({"modelo": "falso"}, tmp_path / "xgb_1m_TEST.joblib")
+    otras_features = list(reversed(FEATURE_COLS))
+    (tmp_path / "meta_1m_TEST.json").write_text(json.dumps({"feature_cols": otras_features}))
+
+    with pytest.raises(FileNotFoundError, match="otro orden de features"):
+        intraday_1m.load_1m_model("TEST")
