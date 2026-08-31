@@ -1,0 +1,32 @@
+{
+  "ticker": "NVDA",
+  "model": "XGBoost-intraday-1m",
+  "interval_min": 1,
+  "bars_per_session": 390,
+  "clamp_k": 3.0,
+  "sigma_1m": 0.00088405,
+  "trained_at": "2026-08-31T18:21:51.548131Z",
+  "n_samples": 22424,
+  "feature_cols": [
+    "tod_sin",
+    "tod_cos",
+    "bars_left",
+    "ret_from_open",
+    "dist_vwap",
+    "range_rel",
+    "vol_rel",
+    "gap",
+    "ret_lag_1",
+    "ret_lag_2",
+    "ret_lag_3",
+    "ret_lag_4",
+    "ret_lag_5",
+    "ret_5m",
+    "ret_15m"
+  ],
+  "metrics": {
+    "mae": 0.000502314562919108,
+    "r2": -0.031930880242052595,
+    "directional_accuracy": 0.49810479375696765
+  }
+}

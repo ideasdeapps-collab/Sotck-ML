@@ -1,11 +1,11 @@
 {
   "ticker": "NVDA",
   "model": "XGBoost-extended (RTH+AH+PM)",
-  "trained_at": "2026-08-28T22:06:47.516467Z",
-  "last_close": 228.05,
-  "last_date": "2026-08-27",
-  "mu_daily": 0.0013157420458540915,
-  "sigma_daily": 0.02801213291162288,
+  "trained_at": "2026-08-31T18:08:11.214374Z",
+  "last_close": 217.54,
+  "last_date": "2026-08-28",
+  "mu_daily": 0.0012151913813339692,
+  "sigma_daily": 0.028123985332493988,
   "feature_cols": [
     "sma_ratio_5",
     "sma_ratio_10",
@@ -24,19 +24,19 @@
     "ah_pm_align",
     "ext_range"
   ],
-  "ext_importance": 0.4296,
+  "ext_importance": 0.4234,
   "metrics": {
-    "mae": 0.020803844017312934,
-    "r2": -0.0066701183528694585,
-    "directional_accuracy": 0.5670103092783505
+    "mae": 0.019797111265066454,
+    "r2": 0.0048976044038236966,
+    "directional_accuracy": 0.5833333333333334
   },
   "last_ext_features": {
-    "ah_return": 0.044619490305629256,
-    "ah_volume_ratio": 0.537324672557962,
-    "pm_return": 0.003866389746628492,
-    "pm_volume_ratio": 0.19505456071567845,
-    "overnight_gap": 0.059674364488705695,
-    "ah_pm_align": 1.0,
-    "ext_range": 0.09221243153131704
+    "ah_return": -0.008410626650610476,
+    "ah_volume_ratio": 0.027974313277609218,
+    "pm_return": 0.002907106835307355,
+    "pm_volume_ratio": 0.05293485577523931,
+    "overnight_gap": -0.003030238808918962,
+    "ah_pm_align": -1.0,
+    "ext_range": 0.009690857268142861
   }
 }

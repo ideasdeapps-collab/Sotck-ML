@@ -1,0 +1,32 @@
+{
+  "ticker": "SNDK",
+  "model": "XGBoost-intraday-1m",
+  "interval_min": 1,
+  "bars_per_session": 390,
+  "clamp_k": 3.0,
+  "sigma_1m": 0.0025311,
+  "trained_at": "2026-08-31T18:22:08.609068Z",
+  "n_samples": 22424,
+  "feature_cols": [
+    "tod_sin",
+    "tod_cos",
+    "bars_left",
+    "ret_from_open",
+    "dist_vwap",
+    "range_rel",
+    "vol_rel",
+    "gap",
+    "ret_lag_1",
+    "ret_lag_2",
+    "ret_lag_3",
+    "ret_lag_4",
+    "ret_lag_5",
+    "ret_5m",
+    "ret_15m"
+  ],
+  "metrics": {
+    "mae": 0.0013303290122418242,
+    "r2": -0.01584974525211047,
+    "directional_accuracy": 0.4938684503901895
+  }
+}
