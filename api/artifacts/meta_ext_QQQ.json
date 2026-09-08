@@ -1,11 +1,11 @@
 {
   "ticker": "QQQ",
   "model": "XGBoost-extended (RTH+AH+PM)",
-  "trained_at": "2026-09-07T16:42:58.560411Z",
-  "last_close": 717.61,
-  "last_date": "2026-09-03",
-  "mu_daily": 0.0008307292949462184,
-  "sigma_daily": 0.013679413702512385,
+  "trained_at": "2026-09-08T15:18:51.801290Z",
+  "last_close": 719.06,
+  "last_date": "2026-09-04",
+  "mu_daily": 0.0008331987922267641,
+  "sigma_daily": 0.013665264212638336,
   "feature_cols": [
     "sma_ratio_5",
     "sma_ratio_10",
@@ -26,17 +26,17 @@
   ],
   "ext_importance": 0.4592,
   "metrics": {
-    "mae": 0.012254921764931544,
-    "r2": -0.14705466903801656,
-    "directional_accuracy": 0.4583333333333333
+    "mae": 0.01217975397820808,
+    "r2": -0.14817600609487513,
+    "directional_accuracy": 0.4536082474226804
   },
   "last_ext_features": {
-    "ah_return": 0.0004933573064090221,
-    "ah_volume_ratio": 0.054437792788143056,
-    "pm_return": 0.0012105516525758389,
-    "pm_volume_ratio": 0.061373348017417714,
-    "overnight_gap": 0.002253363392746376,
+    "ah_return": -0.0008085652590187238,
+    "ah_volume_ratio": 0.04970738079382023,
+    "pm_return": -0.0020067569844863867,
+    "pm_volume_ratio": 0.05829222819451241,
+    "overnight_gap": 0.00241482975197366,
     "ah_pm_align": 1.0,
-    "ext_range": 0.004582305252026789
+    "ext_range": 0.003936678697342631
   }
 }
