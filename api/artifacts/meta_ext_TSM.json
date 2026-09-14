@@ -1,11 +1,11 @@
 {
   "ticker": "TSM",
   "model": "XGBoost-extended (RTH+AH+PM)",
-  "trained_at": "2026-09-11T15:10:20.623559Z",
-  "last_close": 428.24,
+  "trained_at": "2026-09-14T17:15:33.296817Z",
+  "last_close": 428.25,
   "last_date": "2026-09-10",
-  "mu_daily": 0.0017469591755280983,
-  "sigma_daily": 0.026013293755032727,
+  "mu_daily": 0.0017435155725362293,
+  "sigma_daily": 0.02608899758661376,
   "feature_cols": [
     "sma_ratio_5",
     "sma_ratio_10",
@@ -24,11 +24,11 @@
     "ah_pm_align",
     "ext_range"
   ],
-  "ext_importance": 0.424,
+  "ext_importance": 0.4152,
   "metrics": {
-    "mae": 0.020642108504775936,
-    "r2": 0.04118137370853947,
-    "directional_accuracy": 0.5154639175257731
+    "mae": 0.020167433164974186,
+    "r2": 0.06676186299102493,
+    "directional_accuracy": 0.5
   },
   "last_ext_features": {
     "ah_return": -0.0021381038802899045,
