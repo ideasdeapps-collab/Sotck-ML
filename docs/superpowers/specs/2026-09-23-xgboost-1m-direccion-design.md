@@ -48,7 +48,7 @@ más abajo).
 ## Datos
 
 - Tickers de entrenamiento: NVDA QQQ SNDK TSM AVGO META AMAT MU. Contexto: SPY, QQQ, SMH.
-- 1 año de barras de 1 min, sesión regular (~98 k barras por ticker, ~800 k filas en total).
+- 1 año de barras de 1 min, sesión regular (~98 k barras por ticker, ~1 M filas en total).
 - Caché pickle en `training/.cache_1m/` (gitignored), descarga incremental. Pickle y no Parquet:
   `pyarrow` no está en `api/requirements.txt` y no merece entrar solo para una caché.
 - Todo se alinea por `dt_et`; en la fila t solo se usan barras con inicio ≤ t.
@@ -85,7 +85,7 @@ fuera). Label 1 si `r_h > δ_h`, 0 si `r_h < −δ_h`; **las filas con |r_h| ≤
 ## Entrenamiento y validación
 
 - `XGBClassifier` por horizonte (`binary:logistic`, hist, early stopping).
-- **Walk-forward por día**: ~8 folds mensuales; entrena con todo lo anterior, prueba el mes
+- **Walk-forward por día**: 6 folds de ~46 días; entrena con todo lo anterior, prueba el bloque
   siguiente. Como las labels no cruzan sesiones, cortar por día completo basta para no filtrar.
 - **Baselines** sobre el mismo test: clase mayoritaria, momentum `sign(ret_15)`, reversión
   `−sign(dist_vwap)`.
@@ -108,8 +108,12 @@ Artefactos en `api/artifacts/1m_dir/` (`xgb_h5.joblib`, `xgb_h15.joblib`, `xgb_h
 
 ## Inferencia: `GET /signal-1m?ticker=`, `/signal-1m-score` y `/models-1m-dir`
 
-Barras de hoy del ticker y del contexto + 20 días previos (para los z-scores por hora) + noticias
-recientes → features de la **última barra real** → tres modelos. Respuesta:
+Barras de hoy del ticker y del contexto + HISTORY_SESSIONS (91) sesiones previas (para los z-scores
+por hora y el gap) + noticias de los últimos ~4 días (NEWS_SINCE_CAP_MIN, la ventana máxima que
+miran las features de noticias) → features de la **última barra real** → tres modelos. La última
+barra de hoy se descarta si aún puede seguir formándose (no pasó su minuto completo + el delay de
+Polygon, 15 min en el plan Starter): si no, sus features saldrían distintas a las del entrenamiento.
+Respuesta:
 
 ```json
 {
@@ -126,7 +130,7 @@ recientes → features de la **última barra real** → tres modelos. Respuesta:
 ## Acierto real (en vivo)
 
 Cada llamada a `/signal-1m` se guarda en Supabase `signals_1m` (ticker, as_of, h, p_up, confident,
-anchor). `GET /signal-1m/score?ticker=&days=` resuelve el resultado con barras reales y reporta el
+anchor). `GET /signal-1m-score?ticker=&days=` resuelve el resultado con barras reales y reporta el
 acierto en vivo, con y sin filtro de confianza, junto a los baselines. Mismo patrón que
 `api/intraday_store.py` (no-op sin Supabase).
 
