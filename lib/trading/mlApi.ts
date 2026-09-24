@@ -5,6 +5,8 @@ import type {
   IntradayResponse,
   MlResult,
   OneMinutePrediction,
+  OneMinuteSignal,
+  OneMinuteSignalScore,
   PredictCurve,
   PremarketResponse,
   PsychologyResponse,
@@ -85,6 +87,11 @@ export const fetchSessionCurve = (ticker: string) =>
 export const fetchOneMinuteCurve = (ticker: string, horizon = 30) =>
   get<OneMinutePrediction>('predict-1m', { ticker, horizon });
 
+export const fetchOneMinuteSignal = (ticker: string) => get<OneMinuteSignal>('signal-1m', { ticker });
+
+export const fetchOneMinuteSignalScore = (ticker: string, days = 5) =>
+  get<OneMinuteSignalScore>('signal-1m-score', { ticker, days });
+
 export const fetchTechnical = (ticker: string, horizon = 20, zigzag = 0.03) =>
   get<TechnicalResponse>('technical', { ticker, horizon, zigzag });
 
@@ -110,5 +117,5 @@ export const fetchPsychology = (ticker: string, horizon = 21) =>
 // --- Capabilities -----------------------------------------------------------
 
 export const fetchTrainedTickers = (
-  endpoint: 'models' | 'models-mlp' | 'models-intraday' | 'models-extended' | 'models-1m'
+  endpoint: 'models' | 'models-mlp' | 'models-intraday' | 'models-extended' | 'models-1m' | 'models-1m-dir'
 ) => get<{ available?: string[] }>(endpoint);

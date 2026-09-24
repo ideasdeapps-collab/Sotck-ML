@@ -34,6 +34,9 @@ from validate import validate_models           # noqa: E402  ← predicho vs rea
 from psychology import psychology_analysis      # noqa: E402  ← Índice de Psicología (IPM)
 from intraday_ml import predict_session, fetch_today_bars, fetch_live_price  # noqa: E402
 from intraday_1m import predict_next_minutes, DEFAULT_HORIZON  # noqa: E402  ← modelo de 1 min
+from signal_1m import predict_signal, load_models as load_signal_models  # noqa: E402  ← dirección 1m
+import signal_1m_store                              # noqa: E402  ← acierto en vivo (Supabase)
+from data_1m import fetch_bars as fetch_1m_bars     # noqa: E402
 from extended_ml import predict_curve_extended   # noqa: E402  ← modelo AH+PM
 from premarket import premarket_prediction      # noqa: E402  ← ancla premarket (gap)
 from patterns.pattern_engine import PatternEngine   # noqa: E402  ← FVG / OB / liquidez
@@ -358,6 +361,63 @@ def predict_1m(ticker: str, horizon: int = DEFAULT_HORIZON):
         return predict_next_minutes(ticker, horizon)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/models-1m-dir")
+def list_models_1m_dir():
+    """Tickers que sirve el modelo agrupado de dirección de 1 min."""
+    try:
+        _, meta = load_signal_models()
+        return {"available": meta.get("tickers", [])}
+    except FileNotFoundError:
+        return {"available": []}
+
+
+@app.get("/signal-1m")
+def signal_1m(ticker: str):
+    """Dirección a 5/15/30 min con probabilidad y confianza (modelo agrupado)."""
+    try:
+        out = predict_signal(ticker)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(400, str(e))
+    # Registrar no debe tumbar la señal: si Supabase falla, se avisa en la respuesta.
+    if signal_1m_store.enabled():
+        try:
+            signal_1m_store.save_signal(out)
+        except Exception as e:
+            out["store_error"] = str(e)[:200]
+    return out
+
+
+@app.get("/signal-1m-score")
+def signal_1m_score(ticker: str, days: int = 5):
+    """Acierto EN VIVO de las señales guardadas de los últimos `days` días."""
+    if not signal_1m_store.enabled():
+        return {"n_signals": 0, "horizons": {}, "note": "Supabase no configurado"}
+    t = ticker.upper()
+    # M4: mismo chequeo que /signal-1m (contra los tickers que sirve el
+    # modelo), para no gastar Supabase ni Polygon en un ticker que no se sirve.
+    try:
+        _, meta = load_signal_models()
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    if t not in meta.get("tickers", []):
+        raise HTTPException(404, f"{t} no está entre los tickers del modelo de dirección de 1 min.")
+    try:
+        since = dt.datetime.utcnow() - dt.timedelta(days=max(1, min(days, 30)))
+        rows = signal_1m_store.get_signals(t, since.isoformat() + "Z")
+        if not rows:
+            return {"n_signals": 0, "horizons": {}}
+        first = pd.Timestamp(rows[0]["as_of"]).tz_convert("America/New_York").date()
+        # C1: no cachear el JSON crudo de polygon_client; esta barra solo se usa
+        # una vez para puntuar el acierto en vivo, no vale la pena guardarla.
+        bars = fetch_1m_bars(t, first, dt.date.today(), store=False)
+        truncated = len(rows) >= signal_1m_store.SIGNALS_LIMIT
+        return signal_1m_store.score_signals(rows, bars, truncated=truncated)
     except Exception as e:
         raise HTTPException(400, str(e))
 

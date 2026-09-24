@@ -1,0 +1,68 @@
+name: Train 1m direction model (branch)
+
+# Entrena el modelo de dirección de 1 min desde la rama de desarrollo, sin
+# tocar main: los artefactos se commitean en la MISMA rama. Tras el merge, el
+# reentreno diario lo hace retrain.yml.
+on:
+  push:
+    branches: [feat/xgboost-1m-dir]
+    paths:
+      - "training/*_1m*.py"
+      - "training/macro_calendar.csv"
+      - ".github/workflows/train-1m-dir.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: train-1m-dir-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  train:
+    if: github.ref == 'refs/heads/feat/xgboost-1m-dir'  # Nunca corre ni empuja en main
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r api/requirements-dev.txt
+
+      - name: Tests
+        run: cd api && python -m pytest -q
+
+      - name: Cache 1m bars and news
+        uses: actions/cache@v4
+        with:
+          path: training/.cache_1m
+          key: cache-1m-${{ github.run_id }}
+          restore-keys: cache-1m-
+
+      - name: Train
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          # Plan Starter: llamadas ilimitadas. El default de polygon_client (5/min)
+          # es el del plan gratuito y haría la descarga de un año eterna.
+          POLYGON_MAX_CALLS_PER_MIN: "300"
+        run: python training/train_xgb_1m_dir.py --sessions 252
+
+      - name: Report
+        run: cat api/artifacts/1m_dir/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit artifacts to this branch
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add api/artifacts/1m_dir
+          if git diff --cached --quiet; then echo "Sin cambios."; exit 0; fi
+          git commit -m "chore(ml): entrenar el modelo 1m de dirección [skip ci]"
+          git pull --rebase --autostash origin "feat/xgboost-1m-dir" || true
+          git push origin "HEAD:feat/xgboost-1m-dir"

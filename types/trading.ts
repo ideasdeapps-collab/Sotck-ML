@@ -123,6 +123,56 @@ export type SessionPrediction = {
   note?: string;
 };
 
+/** GET /signal-1m — dirección a 5/15/30 min con probabilidad (modelo agrupado). */
+export type OneMinuteSignalHorizon = {
+  h: number;
+  p_up: number;
+  direction: 'up' | 'down';
+  /** |p − 0.5| ≥ tau y el horizonte cabe antes del cierre. */
+  confident: boolean;
+  available: boolean;
+  tau: number;
+  oos_precision: number | null;
+  coverage: number | null;
+  /** Superó a los baselines fuera de muestra. Si no, la probabilidad es solo contexto. */
+  has_edge: boolean;
+  path_close: number;
+  dead_band: number;
+};
+
+export type OneMinuteSignal = {
+  ticker: string;
+  /** ISO con offset ET; ~15 min por detrás de ahora en el plan Starter. */
+  as_of: string;
+  last_close: number;
+  sigma_1m: number;
+  momentum_up: boolean;
+  horizons: OneMinuteSignalHorizon[];
+  model_trained_at: string | null;
+  generated_at: string;
+  note: string;
+  store_error?: string;
+};
+
+/** GET /signal-1m-score — acierto EN VIVO de las señales guardadas. */
+export type OneMinuteSignalScore = {
+  n_signals: number;
+  horizons: Record<
+    string,
+    {
+      resolved: number;
+      pending: number;
+      flat_share: number | null;
+      acc_all: number | null;
+      acc_confident: number | null;
+      coverage: number | null;
+      acc_momentum: number | null;
+    }
+  >;
+};
+
+export type OneMinuteSignalBundle = { signal: OneMinuteSignal; score: OneMinuteSignalScore | null };
+
 /** GET /predict-1m — the next few minutes projected bar by bar. */
 export type OneMinutePrediction = {
   ticker: string;
@@ -232,4 +282,5 @@ export type TickerCapabilities = {
   intraday: boolean;
   extended: boolean;
   oneMinute: boolean;
+  signal1m: boolean;
 };

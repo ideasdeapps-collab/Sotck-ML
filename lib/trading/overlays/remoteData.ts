@@ -4,6 +4,8 @@ import {
   fetchIntraday,
   fetchMlpCurve,
   fetchOneMinuteCurve,
+  fetchOneMinuteSignal,
+  fetchOneMinuteSignalScore,
   fetchPatterns,
   fetchSessionCurve,
   fetchTechnical,
@@ -15,6 +17,7 @@ import type {
   IntradayResponse,
   MlResult,
   OneMinutePrediction,
+  OneMinuteSignalBundle,
   PatternsResponse,
   PredictCurve,
   SessionPrediction,
@@ -32,6 +35,7 @@ export type RemoteOverlayData = {
   patterns?: MlResult<PatternsResponse>;
   intraday?: MlResult<IntradayResponse>;
   oneMinute?: MlResult<OneMinutePrediction>;
+  signal1m?: MlResult<OneMinuteSignalBundle>;
 };
 
 /** Which remote sources the currently enabled, currently allowed overlays need. */
@@ -84,6 +88,8 @@ export async function loadRemoteOverlays(
         return ['intraday', await fetchIntraday(ticker, interval, interval >= 15 ? 2 : 1)];
       case 'oneMinute':
         return ['oneMinute', await fetchOneMinuteCurve(ticker)];
+      case 'signal1m':
+        return ['signal1m', await loadSignalBundle(ticker)];
       default:
         return [source, undefined];
     }
@@ -97,4 +103,11 @@ export async function loadRemoteOverlays(
   }
 
   return data;
+}
+
+/** Señal + acierto en vivo en un solo resultado: sin señal no hay leyenda; sin score, sí. */
+async function loadSignalBundle(ticker: string): Promise<MlResult<OneMinuteSignalBundle>> {
+  const [signal, score] = await Promise.all([fetchOneMinuteSignal(ticker), fetchOneMinuteSignalScore(ticker)]);
+  if (!signal.ok) return signal;
+  return { ok: true, data: { signal: signal.data, score: score.ok ? score.data : null } };
 }

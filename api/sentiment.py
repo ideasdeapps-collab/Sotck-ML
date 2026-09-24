@@ -34,6 +34,15 @@ MAX_DAILY_TILT = 0.0015   # ±0.15% por día de sesgo adicional máximo
 # --------------------------------------------------------------------------- #
 # 1. Noticias + sentimiento desde Polygon (plan gratuito)
 # --------------------------------------------------------------------------- #
+def ticker_sentiment(article: dict, ticker: str) -> tuple[str, str]:
+    """(sentimiento, razonamiento) del insight de `ticker` en un artículo de
+    /v2/reference/news; neutral si el artículo no trae insight para él."""
+    for ins in article.get("insights") or []:
+        if (ins.get("ticker") or "").upper() == ticker.upper():
+            return ins.get("sentiment", "neutral"), ins.get("sentiment_reasoning", "")
+    return "neutral", ""
+
+
 def fetch_news(ticker: str, limit: int = 20) -> list[dict]:
     """Descarga noticias recientes con insights de sentimiento por ticker."""
     if not POLYGON_API_KEY:
@@ -46,12 +55,7 @@ def fetch_news(ticker: str, limit: int = 20) -> list[dict]:
     news = []
     for r in results:
         # 'insights' trae sentimiento por ticker cuando está disponible
-        sentiment, reason = "neutral", ""
-        for ins in r.get("insights", []):
-            if ins.get("ticker", "").upper() == ticker.upper():
-                sentiment = ins.get("sentiment", "neutral")
-                reason = ins.get("sentiment_reasoning", "")
-                break
+        sentiment, reason = ticker_sentiment(r, ticker)
         news.append({
             "published_utc": r.get("published_utc"),
             "title": r.get("title"),

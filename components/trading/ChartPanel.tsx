@@ -17,6 +17,7 @@ import { createOverlayLayer, type OverlayLayer } from '@/lib/trading/overlays/la
 import { paintOverlays } from '@/lib/trading/overlays/paint';
 import { loadRemoteOverlays, requiredSources, type RemoteOverlayData } from '@/lib/trading/overlays/remoteData';
 import { OVERLAYS, blockedReason, type OverlayId } from '@/lib/trading/overlays/registry';
+import { signalLegend } from '@/lib/trading/overlays/signal1mLegend';
 import { calibrate, elliottProbabilitySeries } from '@/lib/trading/priceAction/elliottStart';
 import { useCopilot } from '@/lib/trading/copilot/store';
 import { ownedBy, usePortfolio } from '@/lib/trading/paperEngine';
@@ -373,6 +374,13 @@ export default function ChartPanel() {
     );
   })();
 
+  /** Señal de dirección de 1 min: la lectura (ventaja, abstención, acierto en vivo) va en el texto. */
+  const signalLegendText = (() => {
+    const result = remote.signal1m;
+    if (!overlays.signal1m || !allowed('signal1m') || !result?.ok) return '';
+    return signalLegend(result.data);
+  })();
+
   /** Failures that the toggles alone cannot explain. */
   const overlayErrors = Object.entries(remote)
     .filter(([, result]) => result && !result.ok)
@@ -409,6 +417,7 @@ export default function ChartPanel() {
 
       {elliottLegend && <p className="chart-panel__elliott">{elliottLegend}</p>}
       {oneMinuteLegend && <p className="chart-panel__onemin">{oneMinuteLegend}</p>}
+      {signalLegendText && <p className="chart-panel__onemin">{signalLegendText}</p>}
 
       {overlayErrors.length > 0 && (
         <p className="chart-panel__error">Overlays sin datos — {overlayErrors.join(' · ')}</p>
