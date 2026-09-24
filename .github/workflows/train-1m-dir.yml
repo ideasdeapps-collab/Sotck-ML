@@ -21,6 +21,7 @@ permissions:
 
 jobs:
   train:
+    if: github.ref == 'refs/heads/feat/xgboost-1m-dir'  # Nunca corre ni empuja en main
     runs-on: ubuntu-latest
     timeout-minutes: 150
     steps:
@@ -63,5 +64,5 @@ jobs:
           git add api/artifacts/1m_dir
           if git diff --cached --quiet; then echo "Sin cambios."; exit 0; fi
           git commit -m "chore(ml): entrenar el modelo 1m de dirección [skip ci]"
-          git pull --rebase --autostash origin "${{ github.ref_name }}" || true
-          git push origin "HEAD:${{ github.ref_name }}"
+          git pull --rebase --autostash origin "feat/xgboost-1m-dir" || true
+          git push origin "HEAD:feat/xgboost-1m-dir"
