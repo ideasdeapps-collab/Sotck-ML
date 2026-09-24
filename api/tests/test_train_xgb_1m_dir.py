@@ -62,6 +62,26 @@ def test_choose_tau_prefiere_el_tramo_confiado_si_acierta_mas():
     assert T.confident_stats(p, y, tau)["coverage"] >= 0.10
 
 
+def test_fold_consistency_cuenta_como_fallo_un_fold_sin_filas_confiadas():
+    # fold 0: dos filas confiadas, ambas aciertan -> éxito.
+    # fold 1: dos filas SIN confianza (|p-0.5| < tau) -> debe contar como
+    # fallo, no descartarse del denominador.
+    day = pd.Series([0, 0, 1, 1])
+    oof = np.array([0.9, 0.9, 0.5, 0.5])
+    y = np.array([1, 1, 0, 1])
+    tau = 0.1
+    earlier_folds = [([], [0]), ([], [1])]
+
+    score = T.fold_consistency_score(oof, y, day, tau, earlier_folds)
+
+    assert score == 0.5     # 1 éxito de 2 folds anteriores (no 1 de 1)
+
+
+def test_fold_consistency_sin_folds_anteriores_es_cero():
+    day = pd.Series([], dtype=int)
+    assert T.fold_consistency_score(np.array([]), np.array([]), day, 0.1, []) == 0.0
+
+
 def test_la_compuerta_exige_cada_condicion():
     good = {"coverage": 0.2, "boot_lo": 0.55, "boot_edge_lo": 0.02, "fold_consistency": 1.0}
     assert T.gate(good, min_coverage=0.10)
@@ -134,3 +154,49 @@ def test_con_ruido_puro_la_compuerta_no_da_ventaja():
     assert "by_hour_all_oof" in meta and "by_hour" not in meta
     proba = model.predict_proba(ds[F.FEATURE_COLS].head(3))
     assert proba.shape == (3, 2)
+    # M1: baselines por fold (no solo en el holdout final).
+    for fm in meta["folds"]:
+        assert set(fm["baselines"]) == {"majority", "momentum", "reversion"}
+
+
+def _bars_con_senal(n_days: int = 60, seed: int = 1, start: str = "2026-01-05",
+                    drift: float = 0.0006) -> pd.DataFrame:
+    """Control positivo (M1): deriva de signo aleatorio POR DÍA (mitad de los
+    días sube todo el día, mitad baja), sumada al ruido de cada barra. Así el
+    retorno futuro real (de donde sale la label) y el momentum intradía
+    (ret_15_z) quedan correlacionados con la deriva del día: hay una señal
+    real que un modelo —y el baseline de momentum— pueden aprender."""
+    rng = np.random.default_rng(seed)
+    frames, price = [], 100.0
+    for d in pd.bdate_range(start, periods=n_days):
+        sign = 1.0 if rng.uniform() < 0.5 else -1.0
+        idx = pd.date_range(f"{d.date()} 09:30", periods=390, freq="1min",
+                            tz="America/New_York")
+        rets = rng.normal(0, 0.001, 390) + sign * drift
+        close = price * np.exp(np.cumsum(rets))
+        open_ = np.r_[price * np.exp(rng.normal(0, 0.0002)), close[:-1]]
+        high = np.maximum(open_, close) * (1 + rng.uniform(0, 0.0005, 390))
+        low = np.minimum(open_, close) * (1 - rng.uniform(0, 0.0005, 390))
+        frames.append(pd.DataFrame({
+            "dt_et": idx, "open": open_, "high": high, "low": low, "close": close,
+            "volume": rng.integers(1000, 5000, 390).astype(float),
+            "vw": (high + low + close) / 3,
+            "n": rng.integers(10, 60, 390).astype(float),
+        }))
+        price = float(close[-1])
+    return pd.concat(frames, ignore_index=True)
+
+
+def test_control_positivo_con_senal_plantada_detecta_ventaja():
+    """M1: con una deriva diaria real plantada en los datos sintéticos, la
+    compuerta debe dar has_edge=True (contraparte del test de ruido puro)."""
+    n_days = 60
+    ctx = {"SPY": synth_bars(n_days, seed=11), "QQQ": synth_bars(n_days, seed=12),
+           "SMH": synth_bars(n_days, seed=13)}
+    bars = _bars_con_senal(n_days, seed=1)
+    feat = F.build_features(bars, "NVDA", ctx, synth_news(50, seed=1, days=n_days * 1.5),
+                            fomc_days=set())
+    ds = T.assemble({"NVDA": feat})
+    model, meta = T.train_horizon(ds, 15, n_folds=3, min_train_days=30,
+                                  params={"n_estimators": 60, "max_depth": 3})
+    assert meta["has_edge"] is True

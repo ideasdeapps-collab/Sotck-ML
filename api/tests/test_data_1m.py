@@ -37,6 +37,25 @@ def test_aggs_to_frame_sin_vw_deja_nan_en_vez_de_fallar():
     assert df["vw"].isna().all() and df["n"].isna().all()
 
 
+def test_aggs_to_frame_vacio_devuelve_un_frame_tipado():
+    """M9/T1: dt_et debe salir datetime64 tz-aware (no object) y el resto
+    float, para que el concat de merge_bars con un frame real no dispare
+    FutureWarning por mezclar dtypes en una columna vacía toda-NaN/object."""
+    import warnings
+
+    empty = data_1m.aggs_to_frame([])
+    assert empty.empty
+    assert list(empty.columns) == data_1m.BAR_COLS
+    assert str(empty["dt_et"].dtype) == "datetime64[ns, America/New_York]"
+    for col in ("open", "high", "low", "close", "volume", "vw", "n"):
+        assert empty[col].dtype == float
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        merged = data_1m.merge_bars(empty, synth_bars(1, seed=1))
+    assert len(merged) == 390
+
+
 def test_merge_bars_se_queda_con_la_barra_nueva_si_se_solapan():
     old = synth_bars(n_days=2, seed=1)
     new = old.tail(10).copy()

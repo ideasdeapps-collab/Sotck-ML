@@ -31,7 +31,14 @@ BAR_COLS = ["dt_et", "open", "high", "low", "close", "volume", "vw", "n"]
 def aggs_to_frame(results: list[dict]) -> pd.DataFrame:
     """Respuesta cruda de /v2/aggs → barras de sesión regular, ordenadas y únicas."""
     if not results:
-        return pd.DataFrame(columns=BAR_COLS)
+        # M9/T1: tipado (no todo-object): un merge_bars(empty, real) concatena
+        # dt_et tz-aware con dt_et tz-aware, sin el FutureWarning de pandas por
+        # mezclar una columna vacía object con una datetime64 tz-aware.
+        empty = pd.DataFrame({"dt_et": pd.Series(dtype="datetime64[ns, America/New_York]")})
+        for col in BAR_COLS:
+            if col != "dt_et":
+                empty[col] = pd.Series(dtype=float)
+        return empty[BAR_COLS]
     df = pd.DataFrame(results).rename(columns={"o": "open", "h": "high", "l": "low",
                                                "c": "close", "v": "volume", "t": "timestamp"})
     for col in ("vw", "n"):

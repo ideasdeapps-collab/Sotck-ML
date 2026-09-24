@@ -185,6 +185,30 @@ def block_bootstrap(p: np.ndarray, y: np.ndarray, day: np.ndarray, tau: float,
     return {"boot_lo": boot_lo, "boot_edge_lo": boot_edge_lo}
 
 
+def fold_consistency_score(oof: np.ndarray, y: np.ndarray, day: pd.Series, tau: float,
+                           earlier_folds: list[tuple[list, list]]) -> float:
+    """Consistencia entre folds ANTERIORES (no el holdout): a τ fijo, qué
+    fracción acertó más de la mitad de sus propias filas confiadas.
+
+    Un fold anterior SIN ninguna fila confiada cuenta como FALLO, no se
+    descarta: el denominador es siempre el nº de folds anteriores. Si se
+    descartara, un τ que vacía de confianza los folds más tempranos (p. ej.
+    porque ahí el modelo aún predecía con poco margen) subiría la
+    consistencia por pura falta de datos, en vez de reflejar que esos folds
+    no respaldan nada."""
+    if not earlier_folds:
+        return 0.0
+    hits = 0
+    for _, test_days_i in earlier_folds:
+        mask_i = day.isin(test_days_i).to_numpy()
+        p_i, y_i = oof[mask_i], y[mask_i]
+        conf_i = np.abs(p_i - 0.5) >= tau
+        acc_i = (float(((p_i[conf_i] >= 0.5).astype(int) == y_i[conf_i]).mean())
+                if conf_i.any() else 0.0)
+        hits += acc_i > 0.5
+    return hits / len(earlier_folds)
+
+
 def gate(stats: dict, min_coverage: float = MIN_COVERAGE) -> bool:
     """has_edge exige, todo sobre las mismas filas confiadas del holdout:
     cobertura mínima, que el bootstrap por día no cruce el 50 % (`boot_lo`) ni
@@ -248,10 +272,17 @@ def train_horizon(ds: pd.DataFrame, h: int, n_folds: int = N_FOLDS,
         best_iters.append(int(model.best_iteration) + 1)
         p = model.predict_proba(X[test])[:, 1]
         oof[test] = p
+        # M1: baselines POR FOLD (no solo en el holdout final), con la clase
+        # mayoritaria de su propio train — evidencia de si el modelo aporta
+        # algo fold a fold, no solo en el promedio del último.
+        train_mask = day.isin(train_days).to_numpy()
+        fold_majority = int(y[train_mask].mean() >= 0.5) if train_mask.any() else 0
+        fold_base_preds = _baseline_preds(lab[test], fold_majority)
         fold_metrics.append({
             "test_from": str(test_days[0]), "test_to": str(test_days[-1]),
             "n": int(test.sum()), "acc_all": _acc((p >= 0.5).astype(int), y[test]),
             "auc": float(roc_auc_score(y[test], p)) if len(set(y[test])) == 2 else None,
+            "baselines": {name: _acc(pred, y[test]) for name, pred in fold_base_preds.items()},
         })
         if i == len(folds) - 1 and unlab_last_mask.any():
             # Mismo modelo que puntuó el holdout, ahora sobre sus filas sin etiqueta.
@@ -261,16 +292,7 @@ def train_horizon(ds: pd.DataFrame, h: int, n_folds: int = N_FOLDS,
     prior = ~last & np.isfinite(oof)
     tau = choose_tau(oof[prior], y[prior]) if prior.any() else 0.0
 
-    # Consistencia entre folds ANTERIORES (no el holdout): a τ fijo, cuántos
-    # acertaron más de la mitad de sus propias filas confiadas.
-    earlier_accs = []
-    for _, test_days_i in folds[:-1]:
-        mask_i = day.isin(test_days_i).to_numpy()
-        p_i, y_i = oof[mask_i], y[mask_i]
-        conf_i = np.abs(p_i - 0.5) >= tau
-        if conf_i.any():
-            earlier_accs.append(float(((p_i[conf_i] >= 0.5).astype(int) == y_i[conf_i]).mean()))
-    fold_consistency = (sum(a > 0.5 for a in earlier_accs) / len(earlier_accs)) if earlier_accs else 0.0
+    fold_consistency = fold_consistency_score(oof, y, day, tau, folds[:-1])
 
     p_h, y_h = oof[last], y[last]
     holdout = confident_stats(p_h, y_h, tau)   # incluye wilson_lo, informativo (F1)
