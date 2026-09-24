@@ -87,6 +87,7 @@ const LAYER_IDS: Record<OverlayId, string[]> = {
   sma: ['sma20', 'sma50', 'sma200'],
   elliottStart: ['elliott-prob', 'elliott-prob-50', 'elliott-prob-70', 'elliott-waves', 'elliott-outcome'],
   intraday1m: ['curve-1m'],
+  signal1m: [],
 };
 
 /** Panel propio del oscilador de Elliott, debajo de las velas. */

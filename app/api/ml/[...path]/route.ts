@@ -29,6 +29,7 @@ const ENDPOINTS: Record<string, number> = {
   'models-intraday': 300,
   'models-extended': 300,
   'models-1m': 300,
+  'models-1m-dir': 300,
 
   // Predictive curves (expensive, daily granularity).
   predict: 900,
@@ -45,6 +46,9 @@ const ENDPOINTS: Record<string, number> = {
   'predict-intraday': 120,
   // Near-live: a long TTL would mask the minute-by-minute refresh.
   'predict-1m': 30,
+  'signal-1m': 30,
+  // El acierto en vivo cambia a medida que se resuelven señales, pero no por segundos.
+  'signal-1m-score': 300,
   intraday: 30,
   signals: 60,
   patterns: 30,
