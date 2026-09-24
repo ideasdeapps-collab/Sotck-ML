@@ -1,11 +1,11 @@
 {
   "ticker": "AVGO",
   "model": "XGBoost-extended (RTH+AH+PM)",
-  "trained_at": "2026-09-23T15:39:20.177063Z",
+  "trained_at": "2026-09-24T03:06:04.038842Z",
   "last_close": 364.51,
   "last_date": "2026-09-22",
-  "mu_daily": 0.0014464484345291441,
-  "sigma_daily": 0.032860413207682126,
+  "mu_daily": 0.001468324374245587,
+  "sigma_daily": 0.032891111393348306,
   "feature_cols": [
     "sma_ratio_5",
     "sma_ratio_10",
@@ -24,11 +24,11 @@
     "ah_pm_align",
     "ext_range"
   ],
-  "ext_importance": 0.4661,
+  "ext_importance": 0.4951,
   "metrics": {
-    "mae": 0.025239133170680376,
-    "r2": -0.19279905940916264,
-    "directional_accuracy": 0.5257731958762887
+    "mae": 0.024662549309037777,
+    "r2": -0.14152036098353116,
+    "directional_accuracy": 0.5360824742268041
   },
   "last_ext_features": {
     "ah_return": 0.005388994925951567,

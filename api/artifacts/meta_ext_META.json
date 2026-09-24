@@ -1,11 +1,11 @@
 {
   "ticker": "META",
   "model": "XGBoost-extended (RTH+AH+PM)",
-  "trained_at": "2026-09-23T15:41:37.811148Z",
+  "trained_at": "2026-09-24T03:08:18.460472Z",
   "last_close": 736.68,
   "last_date": "2026-09-22",
-  "mu_daily": 0.0005070857474303274,
-  "sigma_daily": 0.024757617522294106,
+  "mu_daily": 0.0005101949888690004,
+  "sigma_daily": 0.024783299085213335,
   "feature_cols": [
     "sma_ratio_5",
     "sma_ratio_10",
@@ -24,11 +24,11 @@
     "ah_pm_align",
     "ext_range"
   ],
-  "ext_importance": 0.4356,
+  "ext_importance": 0.4348,
   "metrics": {
-    "mae": 0.0210076215428682,
-    "r2": -0.06981572451875784,
-    "directional_accuracy": 0.5670103092783505
+    "mae": 0.021274522148574757,
+    "r2": -0.10516915501196156,
+    "directional_accuracy": 0.5567010309278351
   },
   "last_ext_features": {
     "ah_return": -0.0015258623068118225,

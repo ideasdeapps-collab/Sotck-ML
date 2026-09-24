@@ -1,11 +1,11 @@
 {
   "ticker": "QQQ",
   "model": "XGBoost-extended (RTH+AH+PM)",
-  "trained_at": "2026-09-23T15:43:51.798989Z",
+  "trained_at": "2026-09-24T03:10:32.984538Z",
   "last_close": 747.465,
   "last_date": "2026-09-22",
-  "mu_daily": 0.0008703958021114331,
-  "sigma_daily": 0.013697203340525071,
+  "mu_daily": 0.0008588775636609868,
+  "sigma_daily": 0.013709126904521357,
   "feature_cols": [
     "sma_ratio_5",
     "sma_ratio_10",
@@ -24,11 +24,11 @@
     "ah_pm_align",
     "ext_range"
   ],
-  "ext_importance": 0.48,
+  "ext_importance": 0.4691,
   "metrics": {
-    "mae": 0.012064626143578281,
-    "r2": -0.12224834013087249,
-    "directional_accuracy": 0.4639175257731959
+    "mae": 0.012267850019680702,
+    "r2": -0.1481668790055357,
+    "directional_accuracy": 0.4948453608247423
   },
   "last_ext_features": {
     "ah_return": 0.002155783047000523,
