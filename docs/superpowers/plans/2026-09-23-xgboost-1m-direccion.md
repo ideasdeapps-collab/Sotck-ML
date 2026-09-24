@@ -15,7 +15,7 @@
 - Tickers del modelo: `NVDA QQQ SNDK TSM AVGO META AMAT MU`. Contexto: `SPY QQQ SMH`.
 - Horizontes: 5, 15, 30 min. Banda muerta `δ_h = 0.25·σ·√h`.
 - Historia de entrenamiento: 252 sesiones (1 año) de barras de 1 min en sesión regular (09:30–15:59 ET).
-- Compuerta: `has_edge` solo si cobertura ≥ 10 %, cota inferior de Wilson 95 % > 0.5 y > mejor baseline sobre las mismas filas confiadas.
+- Compuerta: `has_edge` solo si cobertura ≥ 10 % y, sobre un bootstrap por DÍA completo (no por fila: las filas están correlacionadas dentro de un día y entre tickers), el percentil 5 del acierto confiado > 50 % (`boot_lo`) y de la ventaja sobre el mejor baseline > 0 (`boot_edge_lo`), con ≥ 2/3 de los folds walk-forward anteriores acertando, a τ fijo, más de la mitad de sus filas confiadas (`fold_consistency`); el Wilson i.i.d. queda como dato informativo, no decide.
 - Artefactos en `api/artifacts/1m_dir/` (nunca `api/artifacts/xgb_1m_*`: `/models-1m` los listaría).
 - Sin nuevas dependencias de producción (la caché usa pickle, no Parquet: `pyarrow` no está en `api/requirements.txt`).
 - No modificar `training/train_xgb_1m.py`, `api/intraday_1m.py` ni `/predict-1m`.

@@ -47,6 +47,7 @@ def test_walk_forward_no_mezcla_dias_y_entrena_solo_con_el_pasado():
 
 
 def test_wilson_lower_valor_conocido():
+    # El Wilson i.i.d. se conserva como dato informativo (ya no decide has_edge).
     assert T.wilson_lower(60, 100) == pytest.approx(0.502, abs=1e-3)
     assert T.wilson_lower(0, 0) == 0.0
 
@@ -61,12 +62,58 @@ def test_choose_tau_prefiere_el_tramo_confiado_si_acierta_mas():
     assert T.confident_stats(p, y, tau)["coverage"] >= 0.10
 
 
-def test_la_compuerta_exige_superar_al_azar_al_baseline_y_la_cobertura():
-    good = {"n": 1000, "coverage": 0.2, "precision": 0.6, "wilson_lo": 0.57}
-    assert T.gate(good, {"momentum": 0.52, "majority": None}, 0.10)
-    assert not T.gate(good, {"momentum": 0.58}, 0.10)
-    assert not T.gate({**good, "coverage": 0.05}, {"momentum": 0.5}, 0.10)
-    assert not T.gate({**good, "wilson_lo": 0.49}, {"momentum": 0.4}, 0.10)
+def test_la_compuerta_exige_cada_condicion():
+    good = {"coverage": 0.2, "boot_lo": 0.55, "boot_edge_lo": 0.02, "fold_consistency": 1.0}
+    assert T.gate(good, min_coverage=0.10)
+    assert not T.gate({**good, "coverage": 0.05}, min_coverage=0.10)
+    assert not T.gate({**good, "boot_lo": 0.49}, min_coverage=0.10)
+    assert not T.gate({**good, "boot_edge_lo": -0.01}, min_coverage=0.10)
+    assert not T.gate({**good, "fold_consistency": 0.5}, min_coverage=0.10)
+
+
+def test_bootstrap_por_dia_rechaza_lo_que_el_wilson_iid_aprobaria():
+    # 40 días; cada fila de un día COMPARTE la etiqueta (filas fuertemente
+    # dependientes dentro del día), ~55 % de los días "sube". El modelo predice
+    # "sube" con total confianza en TODAS las filas: acierta el 55 % de las filas,
+    # que con n=4000 filas sueltas el Wilson i.i.d. ve como ventaja clara (>50%),
+    # pero con solo 40 días efectivos el bootstrap por bloques de día debe
+    # rechazarlo (percentil 5 por debajo de 50 %).
+    n_days, rows_per_day = 40, 100
+    up_days = round(0.55 * n_days)
+    day = np.repeat(np.arange(n_days), rows_per_day)
+    y = np.repeat(np.array([1] * up_days + [0] * (n_days - up_days)), rows_per_day)
+    p = np.full(len(day), 0.9)
+    tau = 0.1
+    baseline_preds = {"majority": np.zeros(len(day), dtype=int)}
+
+    stats = T.confident_stats(p, y, tau)
+    assert stats["wilson_lo"] > 0.5  # el criterio antiguo (i.i.d.) habría dado luz verde
+
+    boot = T.block_bootstrap(p, y, day, tau, baseline_preds, n_boot=1000, seed=0)
+    assert boot["boot_lo"] <= 0.5  # el bootstrap por día ve la dependencia y lo rechaza
+
+    stats_new = {**stats, **boot, "fold_consistency": 1.0}
+    assert not T.gate(stats_new, min_coverage=0.10)
+
+
+def test_baseline_preds_cae_a_mayoria_si_falta_el_dato():
+    frame = pd.DataFrame({"ret_15_z": [0.5, np.nan, -0.3],
+                          "dist_vwap_z": [np.nan, 0.2, -0.1]})
+    preds = T._baseline_preds(frame, majority=1)
+    assert preds["momentum"].tolist() == [1, 1, 0]   # NaN -> mayoría (1), no "baja"
+    assert preds["reversion"].tolist() == [1, 0, 1]  # NaN -> mayoría (1)
+
+
+def test_ensure_enough_sessions_exige_un_minimo_de_dias():
+    bars_ok = synth_bars(70, seed=1)
+    T._ensure_enough_sessions("NVDA", bars_ok, min_days=60)  # no lanza
+
+    bars_pocas = synth_bars(10, seed=1)
+    with pytest.raises(RuntimeError, match="NVDA"):
+        T._ensure_enough_sessions("NVDA", bars_pocas, min_days=60)
+
+    with pytest.raises(RuntimeError, match="AVGO"):
+        T._ensure_enough_sessions("AVGO", pd.DataFrame(columns=["dt_et"]), min_days=60)
 
 
 def test_con_ruido_puro_la_compuerta_no_da_ventaja():
@@ -74,8 +121,16 @@ def test_con_ruido_puro_la_compuerta_no_da_ventaja():
     model, meta = T.train_horizon(ds, 5, n_folds=2, min_train_days=25,
                                   params={"n_estimators": 40, "max_depth": 3})
     assert meta["has_edge"] is False
-    assert 0.0 <= meta["holdout"]["coverage"] <= 1.0
+    ho = meta["holdout"]
+    assert 0.0 <= ho["coverage"] <= 1.0
+    # F1: la compuerta ahora decide con el bootstrap por día y la consistencia de folds.
+    assert {"boot_lo", "boot_edge_lo", "fold_consistency", "wilson_lo"} <= set(ho)
+    # F2: el holdout también ve las filas sin etiqueta (banda muerta) de los días de test.
+    assert 0.0 <= ho["flat_share"] <= 1.0
+    assert ho["precision_incl_flat"] is None or 0.0 <= ho["precision_incl_flat"] <= 1.0
     assert set(meta["baselines"]) == {"majority", "momentum", "reversion"}
     assert set(meta["abs_ret_mean"]) == {"NVDA", "QQQ"}
+    # F3: by_hour renombrado (informativo, todas las filas OOF).
+    assert "by_hour_all_oof" in meta and "by_hour" not in meta
     proba = model.predict_proba(ds[F.FEATURE_COLS].head(3))
     assert proba.shape == (3, 2)

@@ -8,8 +8,12 @@ horizonte (8 tickers líquidos, el ticker como feature categórica).
 
 Validación: walk-forward por días (cada fold entrena con todo lo anterior y
 prueba el bloque siguiente). El umbral de confianza τ se elige con los folds
-previos y se mide en el último; `has_edge` solo es true si el acierto confiado
-supera, con su cota de Wilson, al 50 % y al mejor baseline en las mismas filas.
+previos y se mide en el último; las filas del holdout están correlacionadas
+dentro de cada día (mismo camino de precio) y entre tickers (se mueven juntos
+intradía), así que `has_edge` NO usa un Wilson i.i.d. sobre filas sueltas —lo
+infla— sino un bootstrap por DÍA completo (`block_bootstrap`) más la
+consistencia entre folds anteriores. El Wilson i.i.d. se conserva como dato
+informativo en `holdout.wilson_lo`, sin decidir.
 
 Uso:
     python training/train_xgb_1m_dir.py --sessions 252
@@ -43,6 +47,8 @@ N_FOLDS = 6
 MIN_TRAIN_DAYS = 60
 MIN_COVERAGE = 0.10
 TAU_GRID = np.round(np.arange(0.0, 0.2001, 0.005), 3)
+BOOT_N = 1000     # remuestreos del bootstrap por día (F1)
+BOOT_PCTL = 5      # percentil inferior que deciden boot_lo / boot_edge_lo
 
 ROOT = Path(__file__).resolve().parent.parent
 ARTIFACT_DIR = ROOT / "api" / "artifacts" / "1m_dir"
@@ -123,10 +129,71 @@ def choose_tau(p: np.ndarray, y: np.ndarray, min_coverage: float = MIN_COVERAGE)
     return best_tau
 
 
-def gate(stats: dict, baseline_accs: dict, min_coverage: float = MIN_COVERAGE) -> bool:
-    best = max([a for a in baseline_accs.values() if a is not None], default=0.5)
-    return bool(stats["coverage"] >= min_coverage and stats["wilson_lo"] > 0.5
-                and stats["wilson_lo"] > best)
+def block_bootstrap(p: np.ndarray, y: np.ndarray, day: np.ndarray, tau: float,
+                    baseline_preds: dict[str, np.ndarray], n_boot: int = BOOT_N,
+                    seed: int = 0) -> dict:
+    """Bootstrap por DÍA completo, no por fila: dentro de un día las filas
+    comparten camino de precio (h=30 son 29/30 el mismo futuro) y los 8 tickers
+    se mueven juntos intradía (ρ≈0.6–0.8), así que remuestrear filas sueltas
+    subestima el error y un Wilson i.i.d. sobre ellas puede dar luz verde a un
+    modelo que solo montó una tendencia de unas pocas sesiones.
+
+    Se remuestrean sesiones completas con reemplazo (mismo nº de días que el
+    holdout) y en cada remuestreo se recalculan, sobre las filas CONFIADAS
+    (|p−0.5|≥τ): el acierto del modelo y su ventaja sobre el mejor baseline en
+    esas mismas filas. `boot_lo`/`boot_edge_lo` son el percentil `BOOT_PCTL`
+    (5) de esas `n_boot` réplicas. Vectorizado: se agregan aciertos y conteos
+    POR DÍA una sola vez y el remuestreo solo indexa y suma esos vectores."""
+    day = np.asarray(day)
+    conf = np.abs(p - 0.5) >= tau
+    if len(day) == 0 or not conf.any():
+        return {"boot_lo": 0.0, "boot_edge_lo": 0.0}
+
+    model_hit = ((p >= 0.5).astype(int) == y).astype(float)
+    base_hit = {name: (pred == y).astype(float) for name, pred in baseline_preds.items()}
+
+    days = np.unique(day)
+    n_days = len(days)
+    day_idx = np.searchsorted(days, day)
+
+    n_conf = np.bincount(day_idx[conf], minlength=n_days).astype(float)
+    hits_model = np.bincount(day_idx[conf], weights=model_hit[conf], minlength=n_days)
+    hits_base = {name: np.bincount(day_idx[conf], weights=hit[conf], minlength=n_days)
+                 for name, hit in base_hit.items()}
+
+    rng = np.random.default_rng(seed)
+    sample = rng.integers(0, n_days, size=(n_boot, n_days))
+    n_conf_b = n_conf[sample].sum(axis=1)
+    hits_model_b = hits_model[sample].sum(axis=1)
+    valid = n_conf_b > 0
+    denom = np.where(valid, n_conf_b, 1.0)
+
+    acc_b = np.full(n_boot, np.nan)
+    acc_b[valid] = hits_model_b[valid] / denom[valid]
+
+    if hits_base:
+        base_acc_b = np.stack([hits_base[name][sample].sum(axis=1) / denom
+                               for name in hits_base], axis=1)
+        base_acc_b[~valid] = np.nan
+        best_base_b = np.nanmax(base_acc_b, axis=1)
+    else:
+        best_base_b = np.full(n_boot, 0.5)
+
+    edge_b = acc_b - best_base_b
+    boot_lo = float(np.nanpercentile(acc_b, BOOT_PCTL)) if np.isfinite(acc_b).any() else 0.0
+    boot_edge_lo = float(np.nanpercentile(edge_b, BOOT_PCTL)) if np.isfinite(edge_b).any() else 0.0
+    return {"boot_lo": boot_lo, "boot_edge_lo": boot_edge_lo}
+
+
+def gate(stats: dict, min_coverage: float = MIN_COVERAGE) -> bool:
+    """has_edge exige, todo sobre las mismas filas confiadas del holdout:
+    cobertura mínima, que el bootstrap por día no cruce el 50 % (`boot_lo`) ni
+    pierda ante el mejor baseline (`boot_edge_lo` > 0), y que al menos 2/3 de
+    los folds walk-forward ANTERIORES, ya con τ fijo, hayan acertado más de la
+    mitad de sus filas confiadas (`fold_consistency`) — un único fold favorable
+    no basta cuando las filas están correlacionadas dentro del día."""
+    return bool(stats["coverage"] >= min_coverage and stats["boot_lo"] > 0.5
+                and stats["boot_edge_lo"] > 0 and stats["fold_consistency"] >= 2 / 3)
 
 
 def _acc(pred: np.ndarray, y: np.ndarray) -> float | None:
@@ -134,10 +201,17 @@ def _acc(pred: np.ndarray, y: np.ndarray) -> float | None:
 
 
 def _baseline_preds(frame: pd.DataFrame, majority: int) -> dict[str, np.ndarray]:
+    """Si falta el dato (NaN), cae a la clase mayoritaria: NaN >= 0 y NaN < 0 son
+    ambas False en numpy, así que sin este resguardo las dos señales predecían
+    "baja" en silencio cada vez que faltaba el z-score, en vez de abstenerse."""
+    mom = frame["ret_15_z"].to_numpy()
+    rev = frame["dist_vwap_z"].to_numpy()
+    momentum = np.where(np.isnan(mom), majority, (mom >= 0).astype(int))
+    reversion = np.where(np.isnan(rev), majority, (rev < 0).astype(int))
     return {
         "majority": np.full(len(frame), majority),
-        "momentum": (frame["ret_15_z"].to_numpy() >= 0).astype(int),
-        "reversion": (frame["dist_vwap_z"].to_numpy() < 0).astype(int),
+        "momentum": momentum.astype(int),
+        "reversion": reversion.astype(int),
     }
 
 
@@ -152,9 +226,17 @@ def train_horizon(ds: pd.DataFrame, h: int, n_folds: int = N_FOLDS,
     day = lab["day"]
     folds = walk_forward_folds(day, n_folds, min_train_days)
 
+    # Filas SIN etiqueta (dentro de la banda muerta) de los días de test: la
+    # inferencia real las puntúa igual que las etiquetadas (F2), así que el
+    # holdout también debe verlas para no sobrestimar la precisión de signo.
+    unlab = ds[ds[f"y_{h}"].isna() & ds[f"r_{h}"].notna()].reset_index(drop=True)
+    X_unlab = unlab[FEATURE_COLS]
+    unlab_last_mask = unlab["day"].isin(folds[-1][1]).to_numpy()
+
     oof = np.full(len(lab), np.nan)
     fold_metrics, best_iters = [], []
-    for train_days, test_days in folds:
+    p_unlab_last = np.array([])
+    for i, (train_days, test_days) in enumerate(folds):
         # Early stopping con el último 10 % de días de TRAIN, nunca con test.
         cut = max(1, int(len(train_days) * 0.9))
         fit = day.isin(train_days[:cut]).to_numpy()
@@ -171,24 +253,65 @@ def train_horizon(ds: pd.DataFrame, h: int, n_folds: int = N_FOLDS,
             "n": int(test.sum()), "acc_all": _acc((p >= 0.5).astype(int), y[test]),
             "auc": float(roc_auc_score(y[test], p)) if len(set(y[test])) == 2 else None,
         })
+        if i == len(folds) - 1 and unlab_last_mask.any():
+            # Mismo modelo que puntuó el holdout, ahora sobre sus filas sin etiqueta.
+            p_unlab_last = model.predict_proba(X_unlab[unlab_last_mask])[:, 1]
 
     last = day.isin(folds[-1][1]).to_numpy()
     prior = ~last & np.isfinite(oof)
     tau = choose_tau(oof[prior], y[prior]) if prior.any() else 0.0
 
+    # Consistencia entre folds ANTERIORES (no el holdout): a τ fijo, cuántos
+    # acertaron más de la mitad de sus propias filas confiadas.
+    earlier_accs = []
+    for _, test_days_i in folds[:-1]:
+        mask_i = day.isin(test_days_i).to_numpy()
+        p_i, y_i = oof[mask_i], y[mask_i]
+        conf_i = np.abs(p_i - 0.5) >= tau
+        if conf_i.any():
+            earlier_accs.append(float(((p_i[conf_i] >= 0.5).astype(int) == y_i[conf_i]).mean()))
+    fold_consistency = (sum(a > 0.5 for a in earlier_accs) / len(earlier_accs)) if earlier_accs else 0.0
+
     p_h, y_h = oof[last], y[last]
-    holdout = confident_stats(p_h, y_h, tau)
+    holdout = confident_stats(p_h, y_h, tau)   # incluye wilson_lo, informativo (F1)
     holdout["acc_all"] = _acc((p_h >= 0.5).astype(int), y_h)
     confident = np.abs(p_h - 0.5) >= tau
     majority = int(y[~last].mean() >= 0.5)
+    baseline_preds_last = _baseline_preds(lab[last], majority)
     baselines = {name: {"all": _acc(pred, y_h), "confident": _acc(pred[confident], y_h[confident])}
-                 for name, pred in _baseline_preds(lab[last], majority).items()}
-    has_edge = gate(holdout, {k: v["confident"] for k, v in baselines.items()})
+                 for name, pred in baseline_preds_last.items()}
+
+    day_h = day[last].to_numpy()
+    holdout.update(block_bootstrap(p_h, y_h, day_h, tau, baseline_preds_last, seed=0))
+    holdout["fold_consistency"] = fold_consistency
+
+    # F2: acierto de signo incluyendo las filas confiadas SIN etiqueta (banda
+    # muerta) del holdout, con la misma τ — la inferencia real no las descarta.
+    r_lab_h = lab[f"r_{h}"].to_numpy()[last]
+    r_unlab_h = unlab[f"r_{h}"].to_numpy()[unlab_last_mask]
+    conf_unlab = (np.abs(p_unlab_last - 0.5) >= tau if len(p_unlab_last)
+                 else np.zeros(0, dtype=bool))
+    pred_conf_lab = (p_h[confident] >= 0.5).astype(int)
+    truth_conf_lab = (r_lab_h[confident] > 0).astype(int)
+    pred_conf_unlab = (p_unlab_last[conf_unlab] >= 0.5).astype(int)
+    truth_conf_unlab = (r_unlab_h[conf_unlab] > 0).astype(int)
+    n_conf_all = len(pred_conf_lab) + len(pred_conf_unlab)
+    holdout["flat_share"] = (len(pred_conf_unlab) / n_conf_all) if n_conf_all else 0.0
+    if n_conf_all:
+        pred_all = np.concatenate([pred_conf_lab, pred_conf_unlab])
+        truth_all = np.concatenate([truth_conf_lab, truth_conf_unlab])
+        holdout["precision_incl_flat"] = float((pred_all == truth_all).mean())
+    else:
+        holdout["precision_incl_flat"] = None
+
+    has_edge = gate(holdout, MIN_COVERAGE)
 
     scored = np.isfinite(oof)
     hours = lab.loc[scored, "dt_et"].dt.hour.to_numpy()
     hits = ((oof[scored] >= 0.5).astype(int) == y[scored])
-    by_hour = {int(hr): float(hits[hours == hr].mean()) for hr in sorted(set(hours))}
+    # Informativo: acierto por hora sobre TODAS las filas fuera de muestra de
+    # todos los folds (no solo el holdout, no filtra por τ); no decide has_edge.
+    by_hour_all_oof = {int(hr): float(hits[hours == hr].mean()) for hr in sorted(set(hours))}
 
     final_params = {**params, "n_estimators": max(20, int(np.median(best_iters))),
                     "early_stopping_rounds": None}
@@ -201,7 +324,7 @@ def train_horizon(ds: pd.DataFrame, h: int, n_folds: int = N_FOLDS,
 
     return final, {
         "tau": tau, "holdout": holdout, "baselines": baselines, "has_edge": has_edge,
-        "folds": fold_metrics, "by_hour": by_hour,
+        "folds": fold_metrics, "by_hour_all_oof": by_hour_all_oof,
         "top_features": [{"feature": f, "importance": v} for f, v in importance],
         "n_estimators": final_params["n_estimators"], "n_labeled": int(len(lab)),
         "abs_ret_mean": {t: float(v) for t, v in abs_ret.items() if np.isfinite(v)},
@@ -234,15 +357,16 @@ def format_report(meta: dict) -> str:
     lines = ["# Modelo 1m de dirección — reporte de entrenamiento", "",
              f"Entrenado {meta['trained_at']} · {meta['n_rows']} filas · "
              f"{meta['sessions']} sesiones · tickers {' '.join(meta['tickers'])}", "",
-             "| h | acierto total | acierto confiado | cobertura | Wilson 95 % inf. "
-             "| mejor baseline (confiado) | has_edge |",
-             "|---|---|---|---|---|---|---|"]
+             "| h | acierto total | acierto confiado | cobertura | boot_lo (día, p5) "
+             "| consistencia folds | mejor baseline (confiado) | has_edge |",
+             "|---|---|---|---|---|---|---|---|"]
     for h, hm in meta["horizons"].items():
         ho = hm["holdout"]
         best = max(((k, v["confident"]) for k, v in hm["baselines"].items()
                     if v["confident"] is not None), key=lambda kv: kv[1], default=("—", None))
         lines.append(f"| {h} min | {_pct(ho['acc_all'])} | {_pct(ho['precision'])} "
-                     f"| {_pct(ho['coverage'])} | {_pct(ho['wilson_lo'])} "
+                     f"| {_pct(ho['coverage'])} | {_pct(ho['boot_lo'])} "
+                     f"| {_pct(ho['fold_consistency'])} "
                      f"| {best[0]} {_pct(best[1])} | {'sí' if hm['has_edge'] else 'no'} |")
     old = []
     for t in ("NVDA", "QQQ", "SNDK"):
@@ -255,17 +379,33 @@ def format_report(meta: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _ensure_enough_sessions(ticker: str, bars: pd.DataFrame, min_days: int) -> None:
+    """Guarda per-ticker: barras vacías o pocas sesiones es un fallo claro y
+    temprano en CI, en vez de un NaT silencioso más adelante en load_news o un
+    walk_forward_folds que revienta con un mensaje genérico sin decir de quién."""
+    days = bars["dt_et"].dt.date.nunique() if len(bars) else 0
+    if days < min_days:
+        raise RuntimeError(f"{ticker}: solo {days} sesiones descargadas "
+                           f"(mínimo {min_days}); revisa la caché o Polygon.")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sessions", type=int, default=252)
     args = ap.parse_args()
-    need = args.sessions + HISTORY_SESSIONS
+    sessions_requested = args.sessions
+    need = sessions_requested + HISTORY_SESSIONS
+    min_days = MIN_TRAIN_DAYS + N_FOLDS
 
     print(f"[1/3] Descargando {need} sesiones de 1 min: contexto {CONTEXT_SYMBOLS}...")
-    context = {s: load_bars(s, need) for s in CONTEXT_SYMBOLS}
+    context = {}
+    for s in CONTEXT_SYMBOLS:
+        context[s] = load_bars(s, need)
+        _ensure_enough_sessions(s, context[s], min_days)
     features = {}
     for t in TICKERS:
         bars = context[t] if t in context else load_bars(t, need)
+        _ensure_enough_sessions(t, bars, min_days)
         news = load_news(t, bars["dt_et"].min().date())
         features[t] = build_features(bars, t, context, news)
         print(f"      {t}: {len(features[t])} filas · {len(news)} noticias")
@@ -275,7 +415,8 @@ def main() -> None:
             "trained_at": dt.datetime.utcnow().isoformat() + "Z",
             "tickers": list(TICKERS), "context": list(CONTEXT_SYMBOLS),
             "feature_cols": FEATURE_COLS, "dead_band": DEAD_BAND,
-            "history_sessions": HISTORY_SESSIONS, "sessions": args.sessions,
+            "history_sessions": HISTORY_SESSIONS, "sessions": int(ds["day"].nunique()),
+            "sessions_requested": sessions_requested,
             "n_rows": int(len(ds)), "horizons": {}}
 
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)

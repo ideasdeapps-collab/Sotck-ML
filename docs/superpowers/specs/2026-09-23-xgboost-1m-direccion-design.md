@@ -91,9 +91,15 @@ fuera). Label 1 si `r_h > δ_h`, 0 si `r_h < −δ_h`; **las filas con |r_h| ≤
   `−sign(dist_vwap)`.
 - **Umbral τ_h**: se elige sobre las predicciones fuera de muestra de los folds anteriores y se
   mide en el último. Métricas: precisión con |p − 0.5| ≥ τ, cobertura, intervalo de Wilson 95 %.
-- **Compuerta** (en `meta.json`): `has_edge = true` solo si la cota inferior de Wilson del acierto
-  confiado supera 50 % y al mejor baseline, con cobertura ≥ 10 %. Si no, el endpoint devuelve la
-  probabilidad con `has_edge=false` y la UI dice «sin ventaja demostrada».
+- **Compuerta** (en `meta.json`): las filas del holdout están correlacionadas dentro de cada día
+  (comparten camino de precio) y entre tickers (se mueven juntos intradía), así que un Wilson i.i.d.
+  sobre filas sueltas infla la confianza; `has_edge = true` solo si, con cobertura ≥ 10 %, un
+  bootstrap por DÍA completo (remuestreo con reemplazo de sesiones enteras, no de filas) da un
+  percentil 5 de acierto confiado > 50 % (`boot_lo`) y de ventaja sobre el mejor baseline > 0
+  (`boot_edge_lo`), y ≥ 2/3 de los folds walk-forward anteriores acertaron, a τ fijo, más de la mitad
+  de sus filas confiadas (`fold_consistency`). El Wilson i.i.d. de las filas sueltas queda como dato
+  informativo, no decide. Si no se cumple, el endpoint devuelve la probabilidad con `has_edge=false`
+  y la UI dice «sin ventaja demostrada».
 - `meta.json`: `feature_cols` (validado al cargar, como `load_1m_model`), τ_h, métricas por fold,
   baselines, métricas por hora del día, top 15 importancias.
 
