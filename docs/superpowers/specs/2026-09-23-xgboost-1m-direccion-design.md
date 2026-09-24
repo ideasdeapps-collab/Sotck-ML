@@ -49,7 +49,8 @@ más abajo).
 
 - Tickers de entrenamiento: NVDA QQQ SNDK TSM AVGO META AMAT MU. Contexto: SPY, QQQ, SMH.
 - 1 año de barras de 1 min, sesión regular (~98 k barras por ticker, ~800 k filas en total).
-- Caché Parquet en `training/.cache_1m/` (gitignored), descarga incremental.
+- Caché pickle en `training/.cache_1m/` (gitignored), descarga incremental. Pickle y no Parquet:
+  `pyarrow` no está en `api/requirements.txt` y no merece entrar solo para una caché.
 - Todo se alinea por `dt_et`; en la fila t solo se usan barras con inicio ≤ t.
 
 ## Features
@@ -68,8 +69,11 @@ entre tickers.
 - **Noticias** (`/v2/reference/news`, `insights`): nº de noticias en 60 min y 24 h, sentimiento neto
   24 h (pos − neg), minutos desde la última noticia (tope). Solo noticias con `published_utc ≤ t`.
 - **Eventos**: `is_earnings_day`, `days_since_earnings` (tope), `is_macro_day`, minutos hasta las
-  14:00 ET en día FOMC. Earnings: `filing_date` de `/vX/reference/financials`; si falta, día con
-  |gap z| > 3 y volumen relativo > 2. Macro: `training/macro_calendar.csv` estático (FOMC, CPI, NFP).
+  14:00 ET en día FOMC. Earnings: Polygon Starter no trae calendario de resultados (es un add-on), y `filing_date` de
+  `/vX/reference/financials` es la fecha del 10-Q, días o semanas después del reporte. Se usa en su
+  lugar `event_day = |gap z| > 3`, que se conoce en la apertura y marca el día posterior al reporte
+  (y cualquier otro shock). Macro: `training/macro_calendar.csv` con las decisiones FOMC; el informe de
+  empleo se aproxima como el primer viernes de cada mes.
 - **Ticker**: categórico (`enable_categorical=True`, `tree_method="hist"`).
 
 ## Labels
@@ -96,7 +100,7 @@ fuera). Label 1 si `r_h > δ_h`, 0 si `r_h < −δ_h`; **las filas con |r_h| ≤
 Artefactos en `api/artifacts/1m_dir/` (`xgb_h5.joblib`, `xgb_h15.joblib`, `xgb_h30.joblib`,
 `meta.json`). El subdirectorio evita que el glob `xgb_1m_*` de `/models-1m` los liste.
 
-## Inferencia: `GET /signal-1m?ticker=`
+## Inferencia: `GET /signal-1m?ticker=`, `/signal-1m-score` y `/models-1m-dir`
 
 Barras de hoy del ticker y del contexto + 20 días previos (para los z-scores por hora) + noticias
 recientes → features de la **última barra real** → tres modelos. Respuesta:
