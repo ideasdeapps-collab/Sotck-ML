@@ -398,15 +398,24 @@ def signal_1m_score(ticker: str, days: int = 5):
     """Acierto EN VIVO de las señales guardadas de los últimos `days` días."""
     if not signal_1m_store.enabled():
         return {"n_signals": 0, "horizons": {}, "note": "Supabase no configurado"}
+    t = ticker.upper()
+    # M4: mismo chequeo que /signal-1m (contra los tickers que sirve el
+    # modelo), para no gastar Supabase ni Polygon en un ticker que no se sirve.
+    try:
+        _, meta = load_signal_models()
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    if t not in meta.get("tickers", []):
+        raise HTTPException(404, f"{t} no está entre los tickers del modelo de dirección de 1 min.")
     try:
         since = dt.datetime.utcnow() - dt.timedelta(days=max(1, min(days, 30)))
-        rows = signal_1m_store.get_signals(ticker, since.isoformat() + "Z")
+        rows = signal_1m_store.get_signals(t, since.isoformat() + "Z")
         if not rows:
             return {"n_signals": 0, "horizons": {}}
         first = pd.Timestamp(rows[0]["as_of"]).tz_convert("America/New_York").date()
         # C1: no cachear el JSON crudo de polygon_client; esta barra solo se usa
         # una vez para puntuar el acierto en vivo, no vale la pena guardarla.
-        bars = fetch_1m_bars(ticker, first, dt.date.today(), store=False)
+        bars = fetch_1m_bars(t, first, dt.date.today(), store=False)
         truncated = len(rows) >= signal_1m_store.SIGNALS_LIMIT
         return signal_1m_store.score_signals(rows, bars, truncated=truncated)
     except Exception as e:
