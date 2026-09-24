@@ -36,7 +36,9 @@ TTL_DAILY = int(os.getenv("TTL_DAILY", "3600"))         # 1 hora
 
 _lock = threading.Lock()
 _calls: deque[float] = deque()
-_cache: dict[str, tuple[float, dict]] = {}
+# (ts de escritura, ttl con el que se guardó, payload): el ttl viaja con la
+# entrada para poder barrer lo vencido en cada escritura (ver _evict_expired).
+_cache: dict[str, tuple[float, int, dict]] = {}
 
 
 def _throttle() -> None:
@@ -88,12 +90,29 @@ def _sanitized(exc: Exception) -> Exception:
         return RuntimeError(scrubbed)
 
 
-def get_json(url: str, ttl: int = TTL_INTRADAY, timeout: int = 30) -> dict:
-    """GET con caché por TTL y respeto estricto del rate-limit."""
+def _evict_expired(now: float) -> None:
+    """Barre entradas cuyo propio TTL ya venció. Se llama en cada escritura:
+    la caché nunca creció con eviction (ni siquiera con ttl=0), y ~90k barras
+    de 1 min por ticker (~45 MB parseados) con claves que cambian a diario
+    puede OOM-matar el proceso en la instancia gratuita de 512 MB."""
+    expired = [k for k, (ts, ttl, _) in _cache.items() if now - ts > ttl]
+    for k in expired:
+        del _cache[k]
+
+
+def get_json(url: str, ttl: int = TTL_INTRADAY, timeout: int = 30, store: bool = True) -> dict:
+    """GET con caché por TTL y respeto estricto del rate-limit.
+
+    `store=False` no escribe la respuesta en la caché de proceso (pero sigue
+    sirviendo un hit ya cacheado si está fresco): lo usan los llamadores que
+    bajan payloads grandes y de un solo uso —p. ej. las barras de 1 min de
+    `/signal-1m`— para no acumular memoria entre pedidos con claves que
+    cambian cada día.
+    """
     now = time.time()
     hit = _cache.get(url)
     if hit and now - hit[0] < ttl:
-        return hit[1]
+        return hit[2]
 
     _throttle()
     try:
@@ -110,11 +129,14 @@ def get_json(url: str, ttl: int = TTL_INTRADAY, timeout: int = 30) -> dict:
         # en su mensaje.
         raise _sanitized(e) from e
     data = r.json()
-    _cache[url] = (time.time(), data)
+    if store:
+        write_ts = time.time()
+        _evict_expired(write_ts)
+        _cache[url] = (write_ts, ttl, data)
     return data
 
 
-def get_paginated(url: str, ttl: int = TTL_INTRADAY, max_pages: int = 20) -> dict:
+def get_paginated(url: str, ttl: int = TTL_INTRADAY, max_pages: int = 20, store: bool = True) -> dict:
     """
     GET siguiendo el `next_url` de Polygon hasta agotar los resultados.
 
@@ -135,7 +157,7 @@ def get_paginated(url: str, ttl: int = TTL_INTRADAY, max_pages: int = 20) -> dic
     pages = 0
 
     while next_url and pages < max_pages:
-        data = get_json(next_url, ttl=ttl)
+        data = get_json(next_url, ttl=ttl, store=store)
         results.extend(data.get("results") or [])
         pages += 1
 

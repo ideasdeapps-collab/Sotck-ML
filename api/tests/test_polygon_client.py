@@ -108,6 +108,57 @@ def test_respuesta_sin_results(monkeypatch):
     assert polygon_client.get_paginated("https://api.polygon.io/f?apiKey=K")["results"] == []
 
 
+def test_store_false_no_crece_la_cache(monkeypatch):
+    get, calls = _fake_get([{"results": [1]}, {"results": [2]}])
+    monkeypatch.setattr(polygon_client.requests, "get", get)
+
+    out1 = polygon_client.get_json("https://api.polygon.io/a?apiKey=K", store=False)
+    assert out1 == {"results": [1]}
+    assert polygon_client._cache == {}
+
+    # sin caché, la segunda llamada a la MISMA url vuelve a pedirla a la red.
+    out2 = polygon_client.get_json("https://api.polygon.io/a?apiKey=K", store=False)
+    assert out2 == {"results": [2]}
+    assert len(calls) == 2
+    assert polygon_client._cache == {}
+
+
+def test_store_false_sigue_leyendo_un_hit_fresco_ya_cacheado(monkeypatch):
+    get, calls = _fake_get([{"results": [1]}, {"results": [2]}])
+    monkeypatch.setattr(polygon_client.requests, "get", get)
+
+    url = "https://api.polygon.io/a?apiKey=K"
+    polygon_client.get_json(url, ttl=900, store=True)
+    out = polygon_client.get_json(url, ttl=900, store=False)
+
+    assert out == {"results": [1]}     # sirvió el hit cacheado, no pidió de nuevo
+    assert len(calls) == 1
+
+
+def test_get_paginated_propaga_store(monkeypatch):
+    get, calls = _fake_get([{"results": [1]}])
+    monkeypatch.setattr(polygon_client.requests, "get", get)
+
+    polygon_client.get_paginated("https://api.polygon.io/first?apiKey=K", store=False)
+
+    assert polygon_client._cache == {}
+
+
+def test_las_entradas_vencidas_se_barren_en_cada_escritura(monkeypatch):
+    get, calls = _fake_get([{"results": [1]}, {"results": [2]}])
+    monkeypatch.setattr(polygon_client.requests, "get", get)
+
+    # ttl=0: la primera entrada queda vencida en el instante en que se escribe.
+    polygon_client.get_json("https://api.polygon.io/a?apiKey=K", ttl=0, store=True)
+    assert "https://api.polygon.io/a?apiKey=K" in polygon_client._cache
+
+    polygon_client.get_json("https://api.polygon.io/b?apiKey=K", ttl=900, store=True)
+
+    # la segunda escritura barrió la primera entrada (ttl=0, ya vencida).
+    assert "https://api.polygon.io/a?apiKey=K" not in polygon_client._cache
+    assert "https://api.polygon.io/b?apiKey=K" in polygon_client._cache
+
+
 class _ErrorResponse:
     """Simula una respuesta que falla en raise_for_status, como `requests` real:
     el mensaje de `HTTPError` incluye la URL completa (clave incluida)."""

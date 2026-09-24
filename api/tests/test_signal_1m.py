@@ -79,12 +79,13 @@ def test_load_models_sin_artefactos_da_file_not_found(tmp_path):
 def test_recent_bars_separa_historia_de_hoy_con_ttl_distinto(monkeypatch):
     calls = []
 
-    def fake_fetch_bars(symbol, start, end, ttl=60):
-        calls.append((symbol, start, end, ttl))
+    def fake_fetch_bars(symbol, start, end, ttl=60, store=True):
+        calls.append((symbol, start, end, ttl, store))
         n_days = 1 if start == end else F.HISTORY_SESSIONS + 20
         return synth_bars(n_days, seed=1, start=start.isoformat())
 
     monkeypatch.setattr(signal_1m, "fetch_bars", fake_fetch_bars)
+    signal_1m._HISTORY_CACHE.clear()
     today = dt.date(2026, 3, 2)
     out = signal_1m._recent_bars("NVDA", today)
 
@@ -95,4 +96,39 @@ def test_recent_bars_separa_historia_de_hoy_con_ttl_distinto(monkeypatch):
     assert hist_call[3] == signal_1m.HISTORY_TTL
     assert live_call[1] == today and live_call[2] == today
     assert live_call[3] == 60
+    # C1: ninguno de los dos fetch escribe el JSON crudo en la caché de
+    # polygon_client (152 días de 1 min por símbolo pueden OOM la instancia).
+    assert hist_call[4] is False and live_call[4] is False
     assert out["dt_et"].dt.date.nunique() == F.HISTORY_SESSIONS
+
+
+def test_recent_bars_cachea_la_historia_parseada_por_ttl(monkeypatch):
+    """C1: el DataFrame parseado de historia (regular-session) se cachea a
+    nivel de módulo por (symbol, start, ayer) con expiry HISTORY_TTL, para no
+    volver a pedir ~150 días de 1 min en cada llamada dentro de la ventana."""
+    calls = []
+
+    def fake_fetch_bars(symbol, start, end, ttl=60, store=True):
+        calls.append((symbol, start, end, ttl, store))
+        n_days = 1 if start == end else F.HISTORY_SESSIONS + 20
+        return synth_bars(n_days, seed=1, start=start.isoformat())
+
+    monkeypatch.setattr(signal_1m, "fetch_bars", fake_fetch_bars)
+    signal_1m._HISTORY_CACHE.clear()
+
+    fake_now = [1_000_000.0]
+    monkeypatch.setattr(signal_1m.time, "time", lambda: fake_now[0])
+
+    today = dt.date(2026, 3, 2)
+    signal_1m._recent_bars("NVDA", today)
+    signal_1m._recent_bars("NVDA", today)
+
+    history_calls = [c for c in calls if c[1] != c[2]]   # start != end -> es la historia
+    assert len(history_calls) == 1                        # un solo fetch de historia en dos llamadas
+    assert len(calls) == 3                                 # 1 historia + 2 "hoy" (siempre se repite)
+
+    fake_now[0] += signal_1m.HISTORY_TTL + 1
+    signal_1m._recent_bars("NVDA", today)
+
+    history_calls = [c for c in calls if c[1] != c[2]]
+    assert len(history_calls) == 2                         # tras expirar, se re-descarga

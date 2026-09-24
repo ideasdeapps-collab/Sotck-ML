@@ -45,14 +45,15 @@ def aggs_to_frame(results: list[dict]) -> pd.DataFrame:
             .reset_index(drop=True))
 
 
-def fetch_bars(ticker: str, start: dt.date, end: dt.date, ttl: int = 60) -> pd.DataFrame:
+def fetch_bars(ticker: str, start: dt.date, end: dt.date, ttl: int = 60,
+               store: bool = True) -> pd.DataFrame:
     key = os.getenv("POLYGON_API_KEY")
     if not key:
         raise RuntimeError("Falta POLYGON_API_KEY")
     url = (f"https://api.polygon.io/v2/aggs/ticker/{ticker.upper()}/range/1/minute/"
            f"{start.isoformat()}/{end.isoformat()}"
            f"?adjusted=true&sort=asc&limit=50000&apiKey={key}")
-    page = get_paginated(url, ttl=ttl, max_pages=40)
+    page = get_paginated(url, ttl=ttl, max_pages=40, store=store)
     if page["truncated"]:
         # Entrenar con un recorte arbitrario sin saberlo es peor que fallar.
         raise RuntimeError(f"Descarga de 1 min truncada para {ticker}: faltan páginas")

@@ -15,7 +15,9 @@ from __future__ import annotations
 import os
 import sys
 import json
+import time
 import datetime as dt
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -36,6 +38,22 @@ _CACHE: dict = {}
 # ~HISTORY_SESSIONS días de 1 min en cada llamada a /signal-1m.
 HISTORY_TTL = 6 * 3600
 
+# C1: caché de proceso de los DataFrames YA PARSEADOS de historia (sesión
+# regular), separada de polygon_client._cache. polygon_client cachea el JSON
+# CRUDO por URL —~45 MB por ticker con ~150 días de 1 min— y sus claves
+# cambian a diario, así que ese caché de proceso se llenaría sin límite y
+# puede OOM-matar la instancia gratuita (512 MB). Aquí se pide con
+# `store=False` (no entra al caché de polygon_client) y se guarda solo el
+# DataFrame ya recortado a sesión regular (unos pocos MB), por (symbol,
+# start, ayer), con el mismo TTL.
+_HISTORY_CACHE: dict[tuple, tuple[float, pd.DataFrame]] = {}
+
+
+def _evict_expired_history(now: float) -> None:
+    expired = [k for k, (ts, _) in _HISTORY_CACHE.items() if now - ts > HISTORY_TTL]
+    for k in expired:
+        del _HISTORY_CACHE[k]
+
 NOTE = ("Dirección a 5/15/30 min con probabilidad. Datos con ~15 min de retraso "
         "(plan Starter). Solo los horizontes con has_edge superaron a los baselines "
         "fuera de muestra; aun así es contexto, no una señal de entrada.")
@@ -43,10 +61,26 @@ NOTE = ("Dirección a 5/15/30 min con probabilidad. Datos con ~15 min de retraso
 
 def _recent_bars(symbol: str, today: dt.date) -> pd.DataFrame:
     """Últimas HISTORY_SESSIONS sesiones de `symbol`: historia con TTL largo
-    (no cambia) + la sesión de hoy con TTL corto (sigue formándose)."""
+    (no cambia) + la sesión de hoy con TTL corto (sigue formándose).
+
+    Ambos fetch piden con `store=False`: el JSON crudo de Polygon no se queda
+    en polygon_client._cache (ver comentario de _HISTORY_CACHE). La historia
+    ya parseada sí se cachea aquí, para no volver a pedir ~150 días de 1 min
+    en cada llamada dentro de HISTORY_TTL.
+    """
     start = today - dt.timedelta(days=int(HISTORY_SESSIONS * 1.6) + 7)
-    history = fetch_bars(symbol, start, today - dt.timedelta(days=1), ttl=HISTORY_TTL)
-    live = fetch_bars(symbol, today, today, ttl=60)
+    yesterday = today - dt.timedelta(days=1)
+    key = (symbol, start, yesterday)
+    now = time.time()
+    cached = _HISTORY_CACHE.get(key)
+    if cached and now - cached[0] < HISTORY_TTL:
+        history = cached[1]
+    else:
+        history = fetch_bars(symbol, start, yesterday, ttl=HISTORY_TTL, store=False)
+        write_ts = time.time()
+        _evict_expired_history(write_ts)
+        _HISTORY_CACHE[key] = (write_ts, history)
+    live = fetch_bars(symbol, today, today, ttl=60, store=False)
     return last_sessions(merge_bars(history, live), HISTORY_SESSIONS)
 
 
