@@ -24,7 +24,9 @@ import os
 import sys
 import json
 import math
+import shutil
 import argparse
+import tempfile
 import datetime as dt
 from pathlib import Path
 
@@ -411,6 +413,31 @@ def _ensure_enough_sessions(ticker: str, bars: pd.DataFrame, min_days: int) -> N
                            f"(mínimo {min_days}); revisa la caché o Polygon.")
 
 
+def _write_artifacts(meta: dict, models: dict[int, object], artifact_dir: Path) -> str:
+    """Escribe los joblibs de cada horizonte + meta.json + report.md en un
+    directorio TEMPORAL hermano de `artifact_dir` y los mueve a producción
+    todos juntos, al final (M3): si algo falla a mitad de volcado (disco
+    lleno, un modelo no serializable...), `artifact_dir` queda exactamente
+    como estaba, en vez de con modelos nuevos de algunos horizontes junto a
+    un meta.json viejo que ya no coincide con ellos."""
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    tmp_dir = Path(tempfile.mkdtemp(prefix=".tmp_1m_dir_", dir=artifact_dir.parent))
+    try:
+        for h, model in models.items():
+            joblib.dump(model, tmp_dir / f"xgb_h{h}.joblib")
+        clean_meta = _clean(meta)
+        (tmp_dir / "meta.json").write_text(json.dumps(clean_meta, indent=2))
+        report = format_report(clean_meta)
+        (tmp_dir / "report.md").write_text(report)
+
+        names = [f"xgb_h{h}.joblib" for h in models] + ["meta.json", "report.md"]
+        for name in names:
+            (tmp_dir / name).replace(artifact_dir / name)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+    return report
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sessions", type=int, default=252)
@@ -441,17 +468,16 @@ def main() -> None:
             "sessions_requested": sessions_requested,
             "n_rows": int(len(ds)), "horizons": {}}
 
-    ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+    # M3: los modelos se entrenan todos ANTES de escribir nada a disco; solo
+    # si los HORIZONS horizontes entrenan sin lanzar se pasa a _write_artifacts.
+    models = {}
     for h in HORIZONS:
         print(f"[2/3] Horizonte {h} min: walk-forward de {N_FOLDS} folds...")
         model, hm = train_horizon(ds, h)
-        joblib.dump(model, ARTIFACT_DIR / f"xgb_h{h}.joblib")
+        models[h] = model
         meta["horizons"][str(h)] = hm
 
-    meta = _clean(meta)
-    (ARTIFACT_DIR / "meta.json").write_text(json.dumps(meta, indent=2))
-    report = format_report(meta)
-    (ARTIFACT_DIR / "report.md").write_text(report)
+    report = _write_artifacts(meta, models, ARTIFACT_DIR)
     print("[3/3] Artefactos en", ARTIFACT_DIR)
     print(report)
 

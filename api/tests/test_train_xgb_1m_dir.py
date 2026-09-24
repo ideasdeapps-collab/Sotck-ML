@@ -124,6 +124,60 @@ def test_baseline_preds_cae_a_mayoria_si_falta_el_dato():
     assert preds["reversion"].tolist() == [1, 0, 1]  # NaN -> mayoría (1)
 
 
+def _meta_dos_horizontes():
+    hm = lambda: {"holdout": {"acc_all": 0.5, "precision": 0.5, "coverage": 0.5,
+                              "boot_lo": 0.5, "fold_consistency": 0.5},
+                 "baselines": {"majority": {"confident": 0.5}}, "has_edge": False}
+    return {"trained_at": "2026-01-01T00:00:00Z", "n_rows": 10, "sessions": 5,
+            "tickers": ["NVDA"], "horizons": {"5": hm(), "15": hm()}}
+
+
+def test_write_artifacts_mueve_todo_junto_si_no_hay_error(tmp_path):
+    artifact_dir = tmp_path / "1m_dir"
+    meta = _meta_dos_horizontes()
+    models = {5: "model5", 15: "model15"}
+
+    report = T._write_artifacts(meta, models, artifact_dir)
+
+    assert (artifact_dir / "xgb_h5.joblib").exists()
+    assert (artifact_dir / "xgb_h15.joblib").exists()
+    assert (artifact_dir / "meta.json").exists()
+    assert (artifact_dir / "report.md").read_text() == report
+    # no debe quedar ningún directorio temporal huérfano junto a artifact_dir.
+    assert [p for p in tmp_path.iterdir() if p != artifact_dir] == []
+
+
+def test_write_artifacts_es_atomico_todo_o_nada(tmp_path, monkeypatch):
+    """M3: un fallo a mitad de volcado nunca deja modelos nuevos junto a un
+    meta.json viejo (desalineados entre sí)."""
+    artifact_dir = tmp_path / "1m_dir"
+    artifact_dir.mkdir()
+    (artifact_dir / "meta.json").write_text('{"old": true}')
+    (artifact_dir / "xgb_h5.joblib").write_bytes(b"viejo")
+
+    meta = _meta_dos_horizontes()
+    models = {5: "model5", 15: "model15"}
+
+    calls = {"n": 0}
+    real_dump = T.joblib.dump
+
+    def flaky_dump(obj, path):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("boom")
+        return real_dump(obj, path)
+
+    monkeypatch.setattr(T.joblib, "dump", flaky_dump)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        T._write_artifacts(meta, models, artifact_dir)
+
+    assert (artifact_dir / "meta.json").read_text() == '{"old": true}'
+    assert (artifact_dir / "xgb_h5.joblib").read_bytes() == b"viejo"
+    assert not (artifact_dir / "xgb_h15.joblib").exists()
+    assert [p for p in tmp_path.iterdir() if p != artifact_dir] == []
+
+
 def test_ensure_enough_sessions_exige_un_minimo_de_dias():
     bars_ok = synth_bars(70, seed=1)
     T._ensure_enough_sessions("NVDA", bars_ok, min_days=60)  # no lanza
