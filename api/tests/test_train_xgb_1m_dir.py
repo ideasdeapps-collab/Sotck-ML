@@ -192,8 +192,10 @@ def test_ensure_enough_sessions_exige_un_minimo_de_dias():
 
 def test_con_ruido_puro_la_compuerta_no_da_ventaja():
     ds = T.assemble({"NVDA": _feat(n_days=40, seed=1), "QQQ": _feat(n_days=40, seed=2, ticker="QQQ")})
+    # R2: n_jobs=1 para que el hist builder de XGBoost sea determinista entre
+    # runners (con n_jobs=-1 el resultado multi-hilo puede variar).
     model, meta = T.train_horizon(ds, 5, n_folds=2, min_train_days=25,
-                                  params={"n_estimators": 40, "max_depth": 3})
+                                  params={"n_estimators": 40, "max_depth": 3, "n_jobs": 1})
     assert meta["has_edge"] is False
     ho = meta["holdout"]
     assert 0.0 <= ho["coverage"] <= 1.0
@@ -214,7 +216,7 @@ def test_con_ruido_puro_la_compuerta_no_da_ventaja():
 
 
 def _bars_con_senal(n_days: int = 60, seed: int = 1, start: str = "2026-01-05",
-                    drift: float = 0.0006) -> pd.DataFrame:
+                    drift: float = 0.003) -> pd.DataFrame:
     """Control positivo (M1): deriva de signo aleatorio POR DÍA (mitad de los
     días sube todo el día, mitad baja), sumada al ruido de cada barra. Así el
     retorno futuro real (de donde sale la label) y el momentum intradía
@@ -251,6 +253,22 @@ def test_control_positivo_con_senal_plantada_detecta_ventaja():
     feat = F.build_features(bars, "NVDA", ctx, synth_news(50, seed=1, days=n_days * 1.5),
                             fomc_days=set())
     ds = T.assemble({"NVDA": feat})
+    # R2: n_jobs=1 para que el hist builder de XGBoost sea determinista entre
+    # runners (con n_jobs=-1 el resultado multi-hilo puede variar).
     model, meta = T.train_horizon(ds, 15, n_folds=3, min_train_days=30,
-                                  params={"n_estimators": 60, "max_depth": 3})
+                                  params={"n_estimators": 60, "max_depth": 3, "n_jobs": 1})
     assert meta["has_edge"] is True
+    # R2: con drift=0.0006 boot_edge_lo rondaba ~0.022 (margen justo). Un
+    # barrido de drift (ver hallazgo R2) muestra que el hueco entre el modelo
+    # y el mejor baseline (momentum) NO crece con la deriva más allá de
+    # drift≈0.0004: ahí el modelo ya acierta ~94-95% mientras momentum ronda
+    # el mismo nivel, así que boot_edge_lo pasa por un pico estrecho (~0.05)
+    # y LUEGO baja y se estabiliza en una meseta ancha (~0.02) a partir de
+    # drift>=0.001, porque momentum también satura en ~97% (una fracción fija
+    # de barras -las primeras de cada sesión, con ret_15_z aún poco fiable-
+    # que ningún nivel de deriva resuelve). Usar el pico estrecho sería
+    # frágil (cualquier diferencia mínima de punto flotante entre runners
+    # puede cruzarlo), justo el tipo de fragilidad que este fix busca evitar;
+    # se elige drift=0.003, bien dentro de la meseta estable y lejos de
+    # cualquier transición, con boot_edge_lo≈0.02 reproducible.
+    assert meta["holdout"]["boot_edge_lo"] >= 0.015
