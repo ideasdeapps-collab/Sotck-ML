@@ -4,6 +4,7 @@
 la superan, y el modelo se entrenaría con un recorte que nadie ve.
 """
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -189,6 +190,43 @@ def test_error_http_no_filtra_la_clave(monkeypatch):
     mensaje = str(exc_info.value)
     assert "SECRETO123" not in mensaje
     assert "apiKey=<oculta>" in mensaje
+
+
+def test_get_json_concurrente_no_revienta_la_cache(monkeypatch):
+    """R1: `_evict_expired` iteraba `_cache.items()` y `get_json` escribía
+    `_cache[url]` sin candado. FastAPI corre los endpoints síncronos en un
+    threadpool, así que una escritura concurrente durante el barrido puede
+    lanzar `RuntimeError: dictionary changed size during iteration`.
+
+    Muchos hilos piden URLs DISTINTAS (así cada llamada agrega una clave
+    nueva, no solo pisa una existente) con TTL largo, para que la caché
+    crezca a miles de entradas y el barrido de cada escritura tenga que
+    recorrer un dict grande mientras otros hilos insertan al mismo tiempo:
+    eso maximiza la ventana de carrera entre el barrido y la escritura."""
+    monkeypatch.setattr(polygon_client.requests, "get",
+                        lambda url, timeout=30: _Response({"ok": True}))
+
+    n_threads = 20
+    iters_per_thread = 250
+    errors: list[BaseException] = []
+    errors_lock = threading.Lock()
+
+    def worker(tid):
+        try:
+            for i in range(iters_per_thread):
+                url = f"https://api.polygon.io/race/t{tid}-{i}?apiKey=K"
+                polygon_client.get_json(url, ttl=900, store=True)
+        except BaseException as e:  # noqa: BLE001 - queremos capturar cualquier excepción del hilo
+            with errors_lock:
+                errors.append(e)
+
+    threads = [threading.Thread(target=worker, args=(t,)) for t in range(n_threads)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+
+    assert errors == [], f"{len(errors)} hilo(s) fallaron, p.ej.: {errors[:1]!r}"
 
 
 def test_error_de_red_no_filtra_la_clave(monkeypatch):

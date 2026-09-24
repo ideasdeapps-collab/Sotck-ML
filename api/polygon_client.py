@@ -39,6 +39,15 @@ _calls: deque[float] = deque()
 # (ts de escritura, ttl con el que se guardó, payload): el ttl viaja con la
 # entrada para poder barrer lo vencido en cada escritura (ver _evict_expired).
 _cache: dict[str, tuple[float, int, dict]] = {}
+# R1: candado dedicado para la caché, separado de `_lock` (el del throttle).
+# FastAPI corre los endpoints síncronos en un threadpool: sin este candado,
+# un barrido (`_evict_expired`, que itera `_cache.items()`) puede solaparse
+# con una escritura (`_cache[url] = ...`) de otro hilo y lanzar
+# `RuntimeError: dictionary changed size during iteration`. No se reutiliza
+# `_lock` para esto porque `_lock` se mantiene tomado mientras se espera el
+# rate-limit (`_throttle`); compartirlo aquí serializaría innecesariamente
+# la llamada de red bajo el mismo candado que protege la caché.
+_cache_lock = threading.Lock()
 
 
 def _throttle() -> None:
@@ -110,9 +119,10 @@ def get_json(url: str, ttl: int = TTL_INTRADAY, timeout: int = 30, store: bool =
     cambian cada día.
     """
     now = time.time()
-    hit = _cache.get(url)
-    if hit and now - hit[0] < ttl:
-        return hit[2]
+    with _cache_lock:
+        hit = _cache.get(url)
+        if hit and now - hit[0] < ttl:
+            return hit[2]
 
     _throttle()
     try:
@@ -131,8 +141,9 @@ def get_json(url: str, ttl: int = TTL_INTRADAY, timeout: int = 30, store: bool =
     data = r.json()
     if store:
         write_ts = time.time()
-        _evict_expired(write_ts)
-        _cache[url] = (write_ts, ttl, data)
+        with _cache_lock:
+            _evict_expired(write_ts)
+            _cache[url] = (write_ts, ttl, data)
     return data
 
 
@@ -178,5 +189,7 @@ def cache_stats() -> dict:
     """Diagnóstico rápido para depuración."""
     with _lock:
         recent = len([t for t in _calls if time.time() - t <= WINDOW])
-    return {"cached_urls": len(_cache), "calls_last_60s": recent,
+    with _cache_lock:
+        cached = len(_cache)
+    return {"cached_urls": cached, "calls_last_60s": recent,
             "max_per_min": MAX_CALLS}
