@@ -68,7 +68,7 @@ entre tickers.
   Para QQQ, el contexto de mercado es SPY.
 - **Noticias** (`/v2/reference/news`, `insights`): nº de noticias en 60 min y 24 h, sentimiento neto
   24 h (pos − neg), minutos desde la última noticia (tope). Solo noticias con `published_utc ≤ t`.
-- **Eventos**: `is_earnings_day`, `days_since_earnings` (tope), `is_macro_day`, minutos hasta las
+- **Eventos**: `event_day` (|gap z| > 3), `days_since_event` (tope), `is_macro_day`, minutos hasta las
   14:00 ET en día FOMC. Earnings: Polygon Starter no trae calendario de resultados (es un add-on), y `filing_date` de
   `/vX/reference/financials` es la fecha del 10-Q, días o semanas después del reporte. Se usa en su
   lugar `event_day = |gap z| > 3`, que se conoce en la apertura y marca el día posterior al reporte
