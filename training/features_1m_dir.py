@@ -29,6 +29,10 @@ BARS_PER_SESSION = 390
 SIGMA_DAYS = 20          # σ y β: sesiones previas
 SIGMA_MIN_DAYS = 5
 TOD_DAYS = 20            # z-score del volumen contra la misma hora del día
+GAP_DAYS = 60            # z-score del gap: sesiones previas (spec: "z-score del gap
+                         # contra sus 60 días"). SIGMA_DAYS/TOD_DAYS deben ser ≤ GAP_DAYS
+                         # para que HISTORY_SESSIONS (derivado de GAP_DAYS) también les
+                         # alcance a ellos.
 RET_WINDOWS = (1, 5, 15, 30, 60)
 CTX_WINDOWS = (1, 5, 15)
 EVENT_GAP_Z = 3.0
@@ -36,10 +40,14 @@ DAYS_SINCE_CAP = 30
 NEWS_SINCE_CAP_MIN = 3 * 1440
 FOMC_DECISION_MIN = 14 * 60
 FOMC_NONE = 999.0
+assert SIGMA_DAYS <= GAP_DAYS and TOD_DAYS <= GAP_DAYS
 
-# Sesiones que necesita la fila de HOY para salir idéntica a la del
-# entrenamiento: 20 de σ para cada una de las 30 que mira days_since_event.
-HISTORY_SESSIONS = SIGMA_DAYS + DAYS_SINCE_CAP + 1
+# Sesiones que necesita la fila de HOY para salir idéntica a la del entrenamiento:
+# 60 de gap (GAP_DAYS) para cada una de las 30 sesiones que mira days_since_event,
+# más la propia sesión de hoy. gap_z se mide contra la dispersión de sus propias
+# GAP_DAYS sesiones previas (no contra σ_1m·√390, ver comentario en gap_z más abajo),
+# así que es GAP_DAYS —no SIGMA_DAYS— quien fija la ventana de historia necesaria.
+HISTORY_SESSIONS = GAP_DAYS + DAYS_SINCE_CAP + 1
 
 KEEP_COLS = ["dt_et", "day", "bar_idx", "close", "sig"]
 FEATURE_COLS = [
@@ -62,7 +70,12 @@ FEATURE_COLS = [
 def _base(bars: pd.DataFrame) -> pd.DataFrame:
     out = bars.sort_values("dt_et").reset_index(drop=True).copy()
     out["day"] = out["dt_et"].dt.date
-    out["bar_idx"] = out.groupby("day").cumcount()
+    # bar_idx viene del RELOJ (09:30 → 0), no de cumcount(): así un minuto faltante
+    # o un medio día no desalinean las features de hora-del-día (tod_sin/cos,
+    # bars_left, _tod_z) respecto al resto de sesiones. ret_k (más abajo) sigue
+    # contando BARRAS, no minutos: con huecos, "ret_5" mira 5 barras atrás aunque
+    # eso sean más de 5 minutos de reloj.
+    out["bar_idx"] = (out["dt_et"].dt.hour * 60 + out["dt_et"].dt.minute - 570).astype("int64")
     # Retorno de 1 min que NO cruza el cambio de sesión.
     out["ret"] = np.log(out["close"] / out.groupby("day")["close"].shift(1))
     return out
@@ -86,14 +99,29 @@ def _expanding_mean(s: pd.Series, day: pd.Series) -> pd.Series:
     return total / count.replace(0, np.nan)
 
 
-def _tod_z(values: pd.Series, bar_idx: pd.Series) -> pd.Series:
-    """z-score contra la MISMA barra del día en las TOD_DAYS sesiones previas.
-    Filas ordenadas por dt_et ⇒ dentro de cada bar_idx van en orden de día."""
-    g = values.groupby(bar_idx)
-    prev = lambda x: x.shift(1).rolling(TOD_DAYS, min_periods=SIGMA_MIN_DAYS)
-    mean = g.transform(lambda x: prev(x).mean())
-    std = g.transform(lambda x: prev(x).std())
-    return (values - mean) / std.replace(0, np.nan)
+def _tod_z(values: pd.Series, day: pd.Series, bar_idx: pd.Series) -> pd.Series:
+    """z-score contra la MISMA bar_idx (barra del reloj) en las TOD_DAYS sesiones
+    previas. Vectorizado con un pivot día×bar_idx: antes eran dos
+    `groupby(bar_idx).transform(lambda ...)` (~78 % del runtime de build_features
+    con HISTORY_SESSIONS=51; con HISTORY_SESSIONS=91 el costo solo crecía). Un
+    pivot + rolling por columnas es la misma cuenta pero vectorizada en C.
+
+    Semántica (documentada porque cambia con el pivot): la ventana es de
+    TOD_DAYS SESIONES CALENDARIO previas, no "TOD_DAYS sesiones que tengan esa
+    bar_idx". Un día que no tenga esa bar_idx (medio día, minuto faltante)
+    aporta NaN a esa columna y el rolling lo salta (min_periods sigue exigiendo
+    SIGMA_MIN_DAYS valores no-NaN dentro de esa ventana de TOD_DAYS filas).
+    Entrenamiento e inferencia llaman a la misma función, así que ambos ven
+    exactamente la misma semántica."""
+    pivot = (pd.DataFrame({"day": day.to_numpy(), "bar_idx": bar_idx.to_numpy(),
+                           "v": values.to_numpy()})
+             .groupby(["day", "bar_idx"])["v"].first().unstack("bar_idx"))
+    prev = pivot.shift(1).rolling(TOD_DAYS, min_periods=SIGMA_MIN_DAYS)
+    mean, std = prev.mean(), prev.std()
+    z = (pivot - mean) / std.replace(0, np.nan)
+    row_pos = z.index.get_indexer(day.to_numpy())
+    col_pos = z.columns.get_indexer(bar_idx.to_numpy())
+    return pd.Series(z.to_numpy()[row_pos, col_pos], index=values.index)
 
 
 def _context_frame(bars: pd.DataFrame | None, sym: str) -> pd.DataFrame | None:
@@ -188,7 +216,15 @@ def build_features(bars: pd.DataFrame, ticker: str, context: dict[str, pd.DataFr
 
     close_by_day = df.groupby("day")["close"].last()
     open_by_day = df.groupby("day")["open"].first()
-    gap_z_day = np.log(open_by_day / close_by_day.shift(1)) / (sig_day * np.sqrt(BARS_PER_SESSION))
+    gap_by_day = np.log(open_by_day / close_by_day.shift(1))
+    # Spec: "z-score del gap contra sus 60 días" — NO σ_1m·√390 (esa es una proxy
+    # de vol diaria muchísimo mayor que la dispersión real del propio gap, así que
+    # con ella un gap de earnings típico del 3-5 % nunca cruzaba EVENT_GAP_Z).
+    # Desviación estándar MUESTRAL (ddof=1, rolling().std(), no RMS contra 0: el
+    # gap medio no es exactamente 0, hay deriva) de las GAP_DAYS sesiones previas,
+    # shift(1) para que el gap de hoy no entre en su propio denominador.
+    gap_std_day = gap_by_day.rolling(GAP_DAYS, min_periods=SIGMA_MIN_DAYS).std().shift(1)
+    gap_z_day = gap_by_day / gap_std_day.replace(0, np.nan)
     df["gap_z"] = day.map(gap_z_day)
 
     for k in RET_WINDOWS:
@@ -197,8 +233,8 @@ def build_features(bars: pd.DataFrame, ticker: str, context: dict[str, pd.DataFr
         rv = df.groupby("day")["ret"].transform(lambda s: s.rolling(w, min_periods=5).std())
         df[f"rv_{w}_z"] = rv / sig
     df["range_z"] = ((df["high"] - df["low"]) / df["close"]) / sig
-    df["vol_tod_z"] = _tod_z(np.log1p(df["volume"]), df["bar_idx"])
-    df["cumvol_tod_z"] = _tod_z(np.log1p(df["volume"].groupby(day).cumsum()), df["bar_idx"])
+    df["vol_tod_z"] = _tod_z(np.log1p(df["volume"]), day, df["bar_idx"])
+    df["cumvol_tod_z"] = _tod_z(np.log1p(df["volume"].groupby(day).cumsum()), day, df["bar_idx"])
 
     n = df["n"].astype(float).replace(0, np.nan)
     df["n_rel"] = n / _expanding_mean(n, day)
