@@ -6,6 +6,7 @@ from pathlib import Path
 
 import joblib
 import numpy as np
+import pandas as pd
 import pytest
 from xgboost import XGBClassifier
 
@@ -87,7 +88,8 @@ def test_recent_bars_separa_historia_de_hoy_con_ttl_distinto(monkeypatch):
     monkeypatch.setattr(signal_1m, "fetch_bars", fake_fetch_bars)
     signal_1m._HISTORY_CACHE.clear()
     today = dt.date(2026, 3, 2)
-    out = signal_1m._recent_bars("NVDA", today)
+    now_et = pd.Timestamp(f"{today} 20:00", tz="America/New_York")   # tras el cierre
+    out = signal_1m._recent_bars("NVDA", today, now_et)
 
     assert len(calls) == 2
     hist_call, live_call = calls
@@ -120,15 +122,66 @@ def test_recent_bars_cachea_la_historia_parseada_por_ttl(monkeypatch):
     monkeypatch.setattr(signal_1m.time, "time", lambda: fake_now[0])
 
     today = dt.date(2026, 3, 2)
-    signal_1m._recent_bars("NVDA", today)
-    signal_1m._recent_bars("NVDA", today)
+    now_et = pd.Timestamp(f"{today} 20:00", tz="America/New_York")   # tras el cierre
+    signal_1m._recent_bars("NVDA", today, now_et)
+    signal_1m._recent_bars("NVDA", today, now_et)
 
     history_calls = [c for c in calls if c[1] != c[2]]   # start != end -> es la historia
     assert len(history_calls) == 1                        # un solo fetch de historia en dos llamadas
     assert len(calls) == 3                                 # 1 historia + 2 "hoy" (siempre se repite)
 
     fake_now[0] += signal_1m.HISTORY_TTL + 1
-    signal_1m._recent_bars("NVDA", today)
+    signal_1m._recent_bars("NVDA", today, now_et)
 
     history_calls = [c for c in calls if c[1] != c[2]]
     assert len(history_calls) == 2                         # tras expirar, se re-descarga
+
+
+def test_drop_forming_bar_descarta_la_barra_a_medio_formar():
+    bars = synth_bars(1, seed=1, start="2026-03-02")
+    last_start = bars["dt_et"].iloc[-1]
+    # Aún no pasó ni el minuto completo ni el delay de Polygon.
+    now_et = last_start + pd.Timedelta(minutes=1)
+    out = signal_1m._drop_forming_bar(bars, now_et, delay_min=15)
+    assert len(out) == len(bars) - 1
+    assert out["dt_et"].iloc[-1] == bars["dt_et"].iloc[-2]
+
+
+def test_drop_forming_bar_conserva_la_barra_completa():
+    bars = synth_bars(1, seed=1, start="2026-03-02")
+    last_start = bars["dt_et"].iloc[-1]
+    now_et = last_start + pd.Timedelta(minutes=1 + 15)   # justo en el límite: ya completa
+    out = signal_1m._drop_forming_bar(bars, now_et, delay_min=15)
+    pd.testing.assert_frame_equal(out, bars)
+
+
+def test_drop_forming_bar_con_frame_vacio_no_cambia():
+    empty = pd.DataFrame(columns=["dt_et", "open", "high", "low", "close", "volume", "vw", "n"])
+    now_et = pd.Timestamp("2026-03-02 20:00", tz="America/New_York")
+    out = signal_1m._drop_forming_bar(empty, now_et, delay_min=15)
+    assert out.empty
+
+
+def test_predict_signal_pide_noticias_solo_unos_dias_atras(monkeypatch, trained):
+    """I3: NEWS_SINCE_CAP_MIN son 3 días; predict_signal no debe pedir noticias
+    desde ~150 días atrás (la ventana de barras de HISTORY_SESSIONS)."""
+    models, meta, feat = trained
+    last_row = feat.iloc[[-1]]
+
+    monkeypatch.setattr(signal_1m, "load_models", lambda: (models, meta))
+    monkeypatch.setattr(signal_1m, "_recent_bars",
+                        lambda s, today, now_et: synth_bars(5, seed=1))
+    monkeypatch.setattr(signal_1m, "build_features",
+                        lambda bars, t, ctx, news: last_row)
+    captured = {}
+
+    def fake_fetch_news(ticker, since):
+        captured["since"] = since
+        return synth_news(5, seed=1, days=5)
+
+    monkeypatch.setattr(signal_1m, "fetch_news", fake_fetch_news)
+
+    signal_1m.predict_signal("NVDA")
+
+    today = dt.date.today()
+    assert captured["since"] >= today - dt.timedelta(days=4)

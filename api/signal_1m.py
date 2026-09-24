@@ -26,7 +26,8 @@ import joblib
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "training"))
 from features_1m_dir import (  # noqa: E402
-    FEATURE_COLS, TICKERS, CONTEXT_SYMBOLS, HISTORY_SESSIONS, BARS_PER_SESSION, build_features,
+    FEATURE_COLS, TICKERS, CONTEXT_SYMBOLS, HISTORY_SESSIONS, BARS_PER_SESSION,
+    NEWS_SINCE_CAP_MIN, build_features,
 )
 from data_1m import fetch_bars, merge_bars, last_sessions  # noqa: E402
 from news_1m import fetch_news  # noqa: E402
@@ -54,19 +55,40 @@ def _evict_expired_history(now: float) -> None:
     for k in expired:
         del _HISTORY_CACHE[k]
 
+
+# I2: Polygon entrega la barra de hoy en curso con datos PARCIALES hasta que
+# su minuto cierra + el delay del plan (15 min, Starter). Sus features
+# (vol_tod_z, cumvol_tod_z, n_rel, size_rel, range_z, vw_dev_z) saldrían
+# distintas a las que vio el entrenamiento, y signal_1m_store ignora
+# duplicados por as_of: esa primera predicción sesgada quedaría clavada.
+POLYGON_DELAY_MIN = 15
+
+
+def _drop_forming_bar(bars: pd.DataFrame, now_et: pd.Timestamp,
+                      delay_min: int = POLYGON_DELAY_MIN) -> pd.DataFrame:
+    """Descarta la última barra de HOY salvo que ya haya pasado su minuto
+    completo + el delay: `now_et >= inicio_barra + 1 min + delay_min`."""
+    if bars.empty:
+        return bars
+    last_start = bars["dt_et"].iloc[-1]
+    if now_et >= last_start + pd.Timedelta(minutes=1 + delay_min):
+        return bars
+    return bars.iloc[:-1].reset_index(drop=True)
+
 NOTE = ("Dirección a 5/15/30 min con probabilidad. Datos con ~15 min de retraso "
         "(plan Starter). Solo los horizontes con has_edge superaron a los baselines "
         "fuera de muestra; aun así es contexto, no una señal de entrada.")
 
 
-def _recent_bars(symbol: str, today: dt.date) -> pd.DataFrame:
+def _recent_bars(symbol: str, today: dt.date, now_et: pd.Timestamp) -> pd.DataFrame:
     """Últimas HISTORY_SESSIONS sesiones de `symbol`: historia con TTL largo
     (no cambia) + la sesión de hoy con TTL corto (sigue formándose).
 
     Ambos fetch piden con `store=False`: el JSON crudo de Polygon no se queda
     en polygon_client._cache (ver comentario de _HISTORY_CACHE). La historia
     ya parseada sí se cachea aquí, para no volver a pedir ~150 días de 1 min
-    en cada llamada dentro de HISTORY_TTL.
+    en cada llamada dentro de HISTORY_TTL. La barra de hoy aún a medio formar
+    se descarta (I2, ver _drop_forming_bar).
     """
     start = today - dt.timedelta(days=int(HISTORY_SESSIONS * 1.6) + 7)
     yesterday = today - dt.timedelta(days=1)
@@ -81,6 +103,7 @@ def _recent_bars(symbol: str, today: dt.date) -> pd.DataFrame:
         _evict_expired_history(write_ts)
         _HISTORY_CACHE[key] = (write_ts, history)
     live = fetch_bars(symbol, today, today, ttl=60, store=False)
+    live = _drop_forming_bar(live, now_et)
     return last_sessions(merge_bars(history, live), HISTORY_SESSIONS)
 
 
@@ -147,9 +170,19 @@ def predict_signal(ticker: str) -> dict:
         raise FileNotFoundError(f"{t} no está entre los tickers del modelo de dirección de 1 min.")
 
     today = dt.date.today()
-    start = today - dt.timedelta(days=int(HISTORY_SESSIONS * 1.6) + 7)
-    bars = {s: _recent_bars(s, today) for s in {t, *CONTEXT_SYMBOLS}}
-    news = fetch_news(t, start)
+    now_et = pd.Timestamp.now(tz="America/New_York")
+    # I3: las features de noticias solo miran hasta NEWS_SINCE_CAP_MIN hacia
+    # atrás (3 días); descargar la ventana entera de barras (~150 días) sería
+    # tirar casi todo lo bajado. +1 día de margen por el corte a medianoche.
+    news_since = today - dt.timedelta(days=NEWS_SINCE_CAP_MIN // 1440 + 1)
+    symbols = {t, *CONTEXT_SYMBOLS}
+    # I4: 4 símbolos a ~45 s cada uno en frío (rate-limit de 5 llamadas/min de
+    # Polygon) suman minutos; el throttle de polygon_client es thread-safe
+    # (candado), así que se piden en paralelo.
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        fetched = pool.map(lambda s: (s, _recent_bars(s, today, now_et)), symbols)
+        bars = dict(fetched)
+    news = fetch_news(t, news_since)
 
     feat = build_features(bars[t], t, bars, news)
     if feat.empty:
