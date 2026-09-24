@@ -162,6 +162,39 @@ def test_drop_forming_bar_con_frame_vacio_no_cambia():
     assert out.empty
 
 
+def test_predict_signal_usa_la_fecha_de_ny_no_la_del_reloj_del_servidor(monkeypatch, trained):
+    """R3: dt.date.today() es la fecha local del SERVIDOR (UTC en Render), no
+    la de Nueva York. predict_signal ya calcula now_et = pd.Timestamp.now(tz=
+    "America/New_York") para otras cosas; "today" debe salir de ese mismo
+    reloj (now_et.date()), no de dt.date.today(). Se fija el reloj a 23:30
+    UTC (19:30 ET) en una fecha bien distinta a la real del sistema para que
+    una implementación que siga usando dt.date.today() quede en evidencia:
+    el "today" capturado no coincidiría con la fecha de now_et."""
+    models, meta, feat = trained
+    fake_now_et = pd.Timestamp("2026-06-15 19:30", tz="America/New_York")  # 23:30 UTC
+
+    monkeypatch.setattr(signal_1m, "load_models", lambda: (models, meta))
+    monkeypatch.setattr(signal_1m, "_now_et", lambda: fake_now_et)
+    monkeypatch.setattr(signal_1m, "fetch_news",
+                        lambda ticker, since: synth_news(5, seed=1, days=5))
+    monkeypatch.setattr(signal_1m, "build_features",
+                        lambda bars, t, ctx, news: feat.iloc[[-1]])
+
+    captured = {}
+
+    def fake_recent_bars(symbol, today, now_et):
+        captured.setdefault("today", today)
+        captured.setdefault("now_et", now_et)
+        return synth_bars(5, seed=1)
+
+    monkeypatch.setattr(signal_1m, "_recent_bars", fake_recent_bars)
+
+    signal_1m.predict_signal("NVDA")
+
+    assert captured["today"] == fake_now_et.date()
+    assert captured["now_et"] == fake_now_et
+
+
 def test_predict_signal_pide_noticias_solo_unos_dias_atras(monkeypatch, trained):
     """I3: NEWS_SINCE_CAP_MIN son 3 días; predict_signal no debe pedir noticias
     desde ~150 días atrás (la ventana de barras de HISTORY_SESSIONS)."""

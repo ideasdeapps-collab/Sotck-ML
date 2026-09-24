@@ -107,6 +107,13 @@ def _recent_bars(symbol: str, today: dt.date, now_et: pd.Timestamp) -> pd.DataFr
     return last_sessions(merge_bars(history, live), HISTORY_SESSIONS)
 
 
+def _now_et() -> pd.Timestamp:
+    """Reloj de Nueva York, aislado en una función para poder monkeypatchearlo
+    en tests (ver R3: predict_signal deriva `today` de este mismo reloj, no
+    del reloj local del servidor)."""
+    return pd.Timestamp.now(tz="America/New_York")
+
+
 def load_models(artifact_dir: Path = ARTIFACT_DIR):
     key = str(artifact_dir)
     if key in _CACHE:
@@ -169,8 +176,11 @@ def predict_signal(ticker: str) -> dict:
     if t not in meta.get("tickers", TICKERS):
         raise FileNotFoundError(f"{t} no está entre los tickers del modelo de dirección de 1 min.")
 
-    today = dt.date.today()
-    now_et = pd.Timestamp.now(tz="America/New_York")
+    # R3: dt.date.today() es la fecha LOCAL DEL SERVIDOR (UTC en Render), que
+    # puede ir un día desfasada de la sesión de NY cerca de la medianoche UTC.
+    # `today` sale del mismo reloj now_et que ya se usa para todo lo demás.
+    now_et = _now_et()
+    today = now_et.date()
     # I3: las features de noticias solo miran hasta NEWS_SINCE_CAP_MIN hacia
     # atrás (3 días); descargar la ventana entera de barras (~150 días) sería
     # tirar casi todo lo bajado. +1 día de margen por el corte a medianoche.
