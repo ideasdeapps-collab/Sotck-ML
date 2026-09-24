@@ -405,7 +405,8 @@ def signal_1m_score(ticker: str, days: int = 5):
             return {"n_signals": 0, "horizons": {}}
         first = pd.Timestamp(rows[0]["as_of"]).tz_convert("America/New_York").date()
         bars = fetch_1m_bars(ticker, first, dt.date.today())
-        return signal_1m_store.score_signals(rows, bars)
+        truncated = len(rows) >= signal_1m_store.SIGNALS_LIMIT
+        return signal_1m_store.score_signals(rows, bars, truncated=truncated)
     except Exception as e:
         raise HTTPException(400, str(e))
 

@@ -17,6 +17,7 @@ import requests
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 _ENABLED = bool(SUPABASE_URL and SUPABASE_KEY)
+SIGNALS_LIMIT = 20000
 
 
 def enabled() -> bool:
@@ -48,26 +49,30 @@ def save_signal(sig: dict) -> int:
     return len(rows)
 
 
-def get_signals(ticker: str, since_iso: str) -> list[dict]:
+def get_signals(ticker: str, since_iso: str, limit: int = SIGNALS_LIMIT) -> list[dict]:
     if not _ENABLED:
         return []
+    # Pedimos las MÁS RECIENTES primero (desc) para que un truncado por `limit`
+    # descarte las filas más viejas, no las más relevantes; reordenamos a asc al volver.
     r = requests.get(f"{SUPABASE_URL}/rest/v1/signals_1m", headers=_h(), timeout=20, params={
         "ticker": f"eq.{ticker.upper()}", "as_of": f"gte.{since_iso}",
-        "order": "as_of.asc", "limit": "20000",
+        "order": "as_of.desc", "limit": str(limit),
         "select": "ticker,as_of,h,p_up,confident,has_edge,anchor_close,dead_band,momentum_up"})
     r.raise_for_status()
-    return r.json()
+    rows = r.json()
+    return sorted(rows, key=lambda row: row["as_of"])
 
 
 def _ratio(num: int, den: int) -> float | None:
     return num / den if den else None
 
 
-def score_signals(rows: list[dict], bars: pd.DataFrame) -> dict:
+def score_signals(rows: list[dict], bars: pd.DataFrame, truncated: bool = False) -> dict:
     """Resuelve cada señal con el cierre real de la barra as_of + h.
-    'Plana' = |r| dentro de la banda muerta: no cuenta ni como acierto ni como fallo."""
+    'Plana' = |r| dentro de la banda muerta: no cuenta ni como acierto ni como fallo.
+    `truncated`: True si `rows` pudo haber perdido filas por el límite de get_signals."""
     if not rows:
-        return {"n_signals": 0, "horizons": {}}
+        return {"n_signals": 0, "horizons": {}, "truncated": truncated}
     # Claves en UTC: Supabase devuelve `as_of` en +00:00 y las barras vienen en ET.
     close_at = {pd.Timestamp(t).tz_convert("UTC"): float(c)
                 for t, c in zip(bars["dt_et"], bars["close"])}
@@ -96,7 +101,7 @@ def score_signals(rows: list[dict], bars: pd.DataFrame) -> dict:
             s["mom_n"] += 1
             s["mom_hit"] += bool(row["momentum_up"]) == up
 
-    return {"n_signals": len(rows), "horizons": {str(h): {
+    return {"n_signals": len(rows), "truncated": truncated, "horizons": {str(h): {
         "resolved": s["resolved"], "pending": s["pending"],
         "flat_share": _ratio(s["flat"], s["resolved"]),
         "acc_all": _ratio(s["hit"], s["decided"]),
