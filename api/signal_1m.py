@@ -26,15 +26,28 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "training"))
 from features_1m_dir import (  # noqa: E402
     FEATURE_COLS, TICKERS, CONTEXT_SYMBOLS, HISTORY_SESSIONS, BARS_PER_SESSION, build_features,
 )
-from data_1m import fetch_bars  # noqa: E402
+from data_1m import fetch_bars, merge_bars, last_sessions  # noqa: E402
 from news_1m import fetch_news  # noqa: E402
 
 ARTIFACT_DIR = Path(__file__).resolve().parent / "artifacts" / "1m_dir"
 _CACHE: dict = {}
 
+# Las sesiones pasadas no cambian: cachearlas varias horas evita re-descargar
+# ~HISTORY_SESSIONS días de 1 min en cada llamada a /signal-1m.
+HISTORY_TTL = 6 * 3600
+
 NOTE = ("Dirección a 5/15/30 min con probabilidad. Datos con ~15 min de retraso "
         "(plan Starter). Solo los horizontes con has_edge superaron a los baselines "
         "fuera de muestra; aun así es contexto, no una señal de entrada.")
+
+
+def _recent_bars(symbol: str, today: dt.date) -> pd.DataFrame:
+    """Últimas HISTORY_SESSIONS sesiones de `symbol`: historia con TTL largo
+    (no cambia) + la sesión de hoy con TTL corto (sigue formándose)."""
+    start = today - dt.timedelta(days=int(HISTORY_SESSIONS * 1.6) + 7)
+    history = fetch_bars(symbol, start, today - dt.timedelta(days=1), ttl=HISTORY_TTL)
+    live = fetch_bars(symbol, today, today, ttl=60)
+    return last_sessions(merge_bars(history, live), HISTORY_SESSIONS)
 
 
 def load_models(artifact_dir: Path = ARTIFACT_DIR):
@@ -71,7 +84,9 @@ def signal_from_features(models: dict, meta: dict, row: pd.DataFrame, ticker: st
         hm = meta["horizons"][str(h)]
         p = float(models[h].predict_proba(X)[0, 1])
         available = h <= bars_left
-        abs_mean = hm["abs_ret_mean"].get(t) or float(np.median(list(hm["abs_ret_mean"].values())))
+        raw_abs_mean = hm["abs_ret_mean"].get(t)
+        abs_mean = (float(raw_abs_mean) if raw_abs_mean is not None
+                    else float(np.median(list(hm["abs_ret_mean"].values()))))
         horizons.append({
             "h": h, "p_up": round(p, 4), "direction": "up" if p >= 0.5 else "down",
             # Un horizonte que cae después del cierre no se puede resolver: nunca es confiado.
@@ -97,9 +112,9 @@ def predict_signal(ticker: str) -> dict:
     if t not in meta.get("tickers", TICKERS):
         raise FileNotFoundError(f"{t} no está entre los tickers del modelo de dirección de 1 min.")
 
-    end = dt.date.today()
-    start = end - dt.timedelta(days=int(HISTORY_SESSIONS * 1.6) + 7)
-    bars = {s: fetch_bars(s, start, end) for s in {t, *CONTEXT_SYMBOLS}}
+    today = dt.date.today()
+    start = today - dt.timedelta(days=int(HISTORY_SESSIONS * 1.6) + 7)
+    bars = {s: _recent_bars(s, today) for s in {t, *CONTEXT_SYMBOLS}}
     news = fetch_news(t, start)
 
     feat = build_features(bars[t], t, bars, news)

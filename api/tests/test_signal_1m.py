@@ -1,4 +1,5 @@
 """Inferencia del modelo de dirección de 1 min."""
+import datetime as dt
 import json
 import sys
 from pathlib import Path
@@ -73,3 +74,25 @@ def test_load_models_sin_artefactos_da_file_not_found(tmp_path):
     signal_1m._CACHE.clear()
     with pytest.raises(FileNotFoundError):
         signal_1m.load_models(tmp_path)
+
+
+def test_recent_bars_separa_historia_de_hoy_con_ttl_distinto(monkeypatch):
+    calls = []
+
+    def fake_fetch_bars(symbol, start, end, ttl=60):
+        calls.append((symbol, start, end, ttl))
+        n_days = 1 if start == end else F.HISTORY_SESSIONS + 20
+        return synth_bars(n_days, seed=1, start=start.isoformat())
+
+    monkeypatch.setattr(signal_1m, "fetch_bars", fake_fetch_bars)
+    today = dt.date(2026, 3, 2)
+    out = signal_1m._recent_bars("NVDA", today)
+
+    assert len(calls) == 2
+    hist_call, live_call = calls
+    assert hist_call[0] == "NVDA" and live_call[0] == "NVDA"
+    assert hist_call[2] == today - dt.timedelta(days=1)
+    assert hist_call[3] == signal_1m.HISTORY_TTL
+    assert live_call[1] == today and live_call[2] == today
+    assert live_call[3] == 60
+    assert out["dt_et"].dt.date.nunique() == F.HISTORY_SESSIONS
