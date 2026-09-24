@@ -160,6 +160,25 @@ jobs:
             sleep 5
           done
 
+      - name: Cache 1m bars and news
+        uses: actions/cache@v4
+        with:
+          path: training/.cache_1m
+          key: cache-1m-${{ github.run_id }}
+          restore-keys: cache-1m-
+
+      # ------------------------------------------------------------------- #
+      # DIRECCIÓN 1m (5/15/30 min) — modelo agrupado, 1 año, walk-forward.
+      # Aislado: si falla, no afecta a los modelos anteriores.
+      # ------------------------------------------------------------------- #
+      - name: Train 1m direction (pooled)
+        env:
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          POLYGON_MAX_CALLS_PER_MIN: "300"   # plan Starter: ilimitado
+        run: |
+          python training/train_xgb_1m_dir.py --sessions 252 \
+            || echo "::warning::train_xgb_1m_dir falló"
+
       - name: Verify artifacts exist
         run: |
           COUNT=$(ls api/artifacts/*.joblib 2>/dev/null | wc -l)
@@ -178,7 +197,7 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          find api/artifacts -type f \( -name '*.joblib' -o -name '*.json' \) -print0 | xargs -0 git add
+          find api/artifacts -type f \( -name '*.joblib' -o -name '*.json' -o -name 'report.md' \) -print0 | xargs -0 git add
           if git diff --cached --quiet; then
             echo "Sin cambios que commitear."
             exit 0

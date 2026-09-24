@@ -276,5 +276,18 @@ Cada ticker de 1 minuto son ~23 000 barras, así que la lista es pequeña por de
 
 El overlay aparece solo para tickers que tengan artefacto: `/models-1m` lista el directorio.
 
+### Dirección a 5/15/30 min (modelo agrupado de 1 minuto)
+
+El modelo de 1 min original predice el retorno del siguiente minuto y acierta ~50 %: ruido. Este
+responde otra pregunta —¿sube o baja más allá del ruido en 5, 15 y 30 min?— con probabilidad, y se
+abstiene cuando no está seguro.
+
+- Entrenamiento: `python training/train_xgb_1m_dir.py --sessions 252` (8 tickers + SPY/QQQ/SMH,
+  noticias de Polygon, días FOMC). Walk-forward por días; reporte en `api/artifacts/1m_dir/report.md`.
+- `has_edge`: percentil 5 del acierto confiado > 50 % y del margen sobre la mejor línea de base (momentum, reversión a VWAP, clase mayoritaria) > 0, más consistencia en al menos 2 de 3 pliegues anteriores y cobertura ≥ 10 %.
+- API: `GET /signal-1m?ticker=`, `GET /signal-1m-score?ticker=&days=` (acierto en vivo; requiere
+  `supabase/signals_1m.sql`), `GET /models-1m-dir`.
+- Calendario: añadir las fechas FOMC del año siguiente a `training/macro_calendar.csv` cada diciembre.
+
 ## ⚠️ Aviso
 Esta herramienta es para análisis y educación. Los mercados son estocásticos; **ningún modelo garantiza precios futuros**. Úsala como apoyo a la decisión, no como consejo de inversión.
