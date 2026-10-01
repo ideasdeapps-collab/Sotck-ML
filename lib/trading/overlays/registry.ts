@@ -81,7 +81,7 @@ export const OVERLAYS: OverlayDef[] = [
   { id: 'elliottStart', label: 'Elliott · probabilidad de inicio', group: 'Curvas predictivas', source: 'local', hint: 'Probabilidad vela a vela de que arranque un impulso 1-2-3, y si el recuento se confirmó al superar la onda 1' },
   { id: 'sma', label: 'SMA 20/50/200', group: 'Curvas predictivas', source: 'technical', timeframes: ['1d'], capability: 'xgb', hint: 'Medias simples calculadas por la API' },
   { id: 'intraday1m', label: 'Curva ML 1m (+30 min)', group: 'Curvas predictivas', source: 'oneMinute', timeframes: ['1m'], capability: 'oneMinute', hint: 'Proyección recursiva de los próximos 30 minutos con el modelo de 1 min. Datos con ~15 min de retraso; señal débil, contexto y no certeza' },
-  { id: 'signal1m', label: 'Señal ML 1m (5/15/30 min)', group: 'Curvas predictivas', source: 'signal1m', timeframes: ['1m', '5m'], capability: 'signal1m', hint: 'Probabilidad de que el precio suba o baje en 5, 15 y 30 minutos, con abstención cuando el modelo no está seguro y el acierto medido en vivo. Datos con ~15 min de retraso' },
+  { id: 'signal1m', label: 'XGBoost 1m · señal 5/15/30 min', group: 'Curvas predictivas', source: 'signal1m', timeframes: ['1m', '5m'], capability: 'signal1m', hint: 'XGBoost 1m de dirección: un rayo por horizonte (5, 15 y 30 min) desde la última vela, verde si sube y rojo si baja; firme solo si el modelo está confiado y con ventaja demostrada, punteado si no. Probabilidad, abstención cuando el modelo no está seguro y el acierto medido en vivo. Datos con ~15 min de retraso' },
 ];
 
 export const OVERLAY_GROUPS: OverlayGroup[] = ['Plan de trading', 'Indicadores', 'Day trading', 'Estructura', 'Curvas predictivas'];

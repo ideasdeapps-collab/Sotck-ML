@@ -7,6 +7,7 @@ import { previousDayLevels, sessionSegments } from '../dayTrading/sessions';
 import { buildIntradayPlan, zonesFromChartism, type PlanBias } from '../dayTrading/intradayPlan';
 import { buildWickSetup, detectWickZones, type WickZone } from '../priceAction/wickZones';
 import { elliottProbabilitySeries } from '../priceAction/elliottStart';
+import { signalRays } from './signal1mRays';
 import type { OverlayLayer, LinePoint, PriceLineSpec } from './layer';
 import type { Box } from './boxPrimitive';
 import type { OverlayId, OverlayState } from './registry';
@@ -87,7 +88,7 @@ const LAYER_IDS: Record<OverlayId, string[]> = {
   sma: ['sma20', 'sma50', 'sma200'],
   elliottStart: ['elliott-prob', 'elliott-prob-50', 'elliott-prob-70', 'elliott-waves', 'elliott-outcome'],
   intraday1m: ['curve-1m'],
-  signal1m: [],
+  signal1m: ['signal-1m-5', 'signal-1m-15', 'signal-1m-30'],
 };
 
 /** Panel propio del oscilador de Elliott, debajo de las velas. */
@@ -704,6 +705,38 @@ export function paintOverlays({
       title: `ML 1m +${oneMinute.horizon_min}m`,
     });
   } else clear('intraday1m');
+
+  // --- Señal de dirección de 1 min ------------------------------------------
+  // Un rayo por horizonte desde la última barra real. Firme solo si el modelo
+  // está confiado y el horizonte demostró ventaja; si no, punteado y fino.
+  const signal1m = remote.signal1m?.ok ? remote.signal1m.data.signal : null;
+
+  if (on('signal1m') && signal1m) {
+    const rays = signalRays(signal1m, (epoch) => {
+      const time = snap(epoch);
+      return time === null ? null : Number(time);
+    });
+    const drawn = new Set(rays.map((ray) => `signal-1m-${ray.h}`));
+
+    for (const ray of rays) {
+      // layer.line solo aplica color y trazo al crear la serie; si la dirección
+      // o la firmeza cambian entre refrescos, hay que recrearla.
+      layer.remove(`signal-1m-${ray.h}`);
+      layer.line(
+        `signal-1m-${ray.h}`,
+        dedupe(ray.points.map((point) => ({ time: point.time as Time, value: point.value }))),
+        {
+          color: ray.direction === 'up' ? COLORS.bullish : COLORS.bearish,
+          lineWidth: ray.firm ? 2 : 1,
+          dashed: !ray.firm,
+          title: `${ray.h}m`,
+        }
+      );
+    }
+
+    // Un horizonte que deja de caber antes del cierre no puede quedarse pintado.
+    LAYER_IDS.signal1m.filter((id) => !drawn.has(id)).forEach((id) => layer.remove(id));
+  } else clear('signal1m');
 
   // --- Elliott: probabilidad de inicio -------------------------------------
   // Local sobre las velas cargadas, en un panel propio bajo el gráfico porque
