@@ -1,11 +1,11 @@
 {
   "ticker": "SNDK",
   "model": "XGBoost-extended (RTH+AH+PM)",
-  "trained_at": "2026-10-01T17:48:57.844968Z",
-  "last_close": 1739.89,
-  "last_date": "2026-09-30",
-  "mu_daily": 0.008941537736028519,
-  "sigma_daily": 0.06541367575273815,
+  "trained_at": "2026-10-02T17:01:41.885323Z",
+  "last_close": 1786.91,
+  "last_date": "2026-10-01",
+  "mu_daily": 0.008987575244074213,
+  "sigma_daily": 0.06533469115462824,
   "feature_cols": [
     "sma_ratio_5",
     "sma_ratio_10",
@@ -24,19 +24,19 @@
     "ah_pm_align",
     "ext_range"
   ],
-  "ext_importance": 0.481,
+  "ext_importance": 0.4826,
   "metrics": {
-    "mae": 0.06519973007526796,
-    "r2": -0.0747138690274094,
-    "directional_accuracy": 0.5194805194805194
+    "mae": 0.06312908555975477,
+    "r2": -0.015442243660990007,
+    "directional_accuracy": 0.4935064935064935
   },
   "last_ext_features": {
-    "ah_return": -0.001764180928205403,
-    "ah_volume_ratio": 0.019563657964883022,
-    "pm_return": 0.0026199467726902978,
-    "pm_volume_ratio": 0.028152791188261,
-    "overnight_gap": 1.7921514750009913e-05,
-    "ah_pm_align": -1.0,
-    "ext_range": 0.005550920971771013
+    "ah_return": -0.002520574505929063,
+    "ah_volume_ratio": 0.08549606705835205,
+    "pm_return": -0.020082141747280978,
+    "pm_volume_ratio": 0.06466003719470438,
+    "overnight_gap": -0.002664634757937883,
+    "ah_pm_align": 1.0,
+    "ext_range": 0.01638494387576228
   }
 }
