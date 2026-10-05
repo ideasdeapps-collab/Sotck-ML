@@ -1,11 +1,11 @@
 # Modelo 1m de dirección — reporte de entrenamiento
 
-Entrenado 2026-10-02T17:02:31.207890Z · 1047374 filas · 338 sesiones · tickers NVDA QQQ SNDK TSM AVGO META AMAT MU
+Entrenado 2026-10-05T20:09:27.708596Z · 1048893 filas · 338 sesiones · tickers NVDA QQQ SNDK TSM AVGO META AMAT MU
 
 | h | acierto total | acierto confiado | cobertura | boot_lo (día, p5) | consistencia folds | mejor baseline (confiado) | has_edge |
 |---|---|---|---|---|---|---|---|
-| 5 min | 51.0% | 60.3% | 0.2% | 44.4% | 40.0% | reversion 62.4% | no |
-| 15 min | 50.7% | 50.7% | 100.0% | 49.2% | 60.0% | reversion 52.2% | no |
-| 30 min | 51.7% | 52.6% | 61.0% | 50.6% | 40.0% | reversion 52.9% | no |
+| 5 min | 51.3% | 56.3% | 0.2% | 51.1% | 40.0% | reversion 56.8% | no |
+| 15 min | 50.8% | 52.7% | 27.8% | 50.8% | 40.0% | reversion 53.1% | no |
+| 30 min | 51.8% | 53.3% | 17.0% | 50.8% | 100.0% | reversion 54.4% | no |
 
-Modelo 1m actual (signo del siguiente minuto, otra pregunta): NVDA 49.1%, QQQ 49.7%, SNDK 50.2%
+Modelo 1m actual (signo del siguiente minuto, otra pregunta): NVDA 48.9%, QQQ 49.5%, SNDK 50.2%
