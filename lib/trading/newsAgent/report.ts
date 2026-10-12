@@ -1,7 +1,8 @@
 import { etParts } from '../chartTime';
 import type { Candle } from '../marketData';
 import { parseYahooChart, yahooUrl } from '../liveQuote/sources';
-import { buildBrief, parseLlmReport, shouldAskLlm } from './llm';
+import { LLM_INTERVAL_MS, buildBrief, parseLlmReport, shouldAskLlm } from './llm';
+import { etClock } from './format';
 import { MAX_MACRO, analystSummary, earningsInfo, mergeHeadlines, momentum, polygonSentiment } from './metrics';
 import {
   MACRO_QUERY,
@@ -42,11 +43,15 @@ export type AgentDeps = {
 
 type LlmMemo = { ids: string[]; at: number; report: LlmReport; model: string };
 
-/** Estado entre llamadas: último resumen por ticker y llamadas a la IA del día. */
-export type AgentState = { memo: Map<string, LlmMemo>; budget: { day: string; calls: number } };
+/**
+ * Estado entre llamadas: último resumen por ticker, cuándo se llamó a la IA por
+ * última vez (también si falló, para que un error no reintente cada 5 min) y
+ * llamadas del día.
+ */
+export type AgentState = { memo: Map<string, LlmMemo>; attempts: Map<string, number>; budget: { day: string; calls: number } };
 
 export function createAgentState(): AgentState {
-  return { memo: new Map(), budget: { day: '', calls: 0 } };
+  return { memo: new Map(), attempts: new Map(), budget: { day: '', calls: 0 } };
 }
 
 const round = (value: number) => Number(value.toFixed(2));
@@ -141,7 +146,11 @@ async function summarise(
   const previous = (note?: string): NewsReport['llm'] | null =>
     memo ? { ok: true, ...memo.report, at: memo.at, model: memo.model, ...(note ? { note } : {}) } : null;
 
-  if (memo && !shouldAskLlm(memo, ids, now)) return previous()!;
+  const lastAttempt = state.attempts.get(ticker) ?? null;
+  if (!shouldAskLlm(lastAttempt, now)) {
+    const next = `próximo resumen de IA a las ${etClock(lastAttempt! + LLM_INTERVAL_MS)}`;
+    return previous() ?? { ok: false, reason: `El último intento falló; ${next}` };
+  }
 
   const day = etParts(now / 1000).date;
   if (state.budget.day !== day) state.budget = { day, calls: 0 };
@@ -152,6 +161,7 @@ async function summarise(
   }
 
   state.budget.calls += 1;
+  state.attempts.set(ticker, now);
 
   try {
     const report = parseLlmReport(await deps.askLlm(buildBrief({ ticker, data, headlines, macro, now })));

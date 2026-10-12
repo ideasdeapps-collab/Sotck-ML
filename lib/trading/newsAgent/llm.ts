@@ -7,8 +7,12 @@ import { EMOTIONS, type Emotion, type Headline, type LlmReport, type NewsData } 
  * aparte para que se puedan comprobar.
  */
 
-/** Un resumen más viejo que esto se renueva aunque no haya titulares nuevos: citaría un VIX que ya no es. */
-export const LLM_MAX_AGE_MS = 60 * 60_000;
+/**
+ * Como mucho una llamada a la IA cada 30 min por ticker, haya o no titulares
+ * nuevos: entre medias el panel enseña el último resumen (los titulares y la
+ * línea de datos sí se refrescan cada 5 min, no cuestan IA).
+ */
+export const LLM_INTERVAL_MS = 30 * 60_000;
 
 export const SYSTEM_PROMPT = `Eres el analista de noticias de una mesa de day trading que opera en PAPEL (dinero simulado).
 
@@ -78,12 +82,9 @@ export function buildBrief(input: { ticker: string; data: NewsData; headlines: H
   };
 }
 
-export function shouldAskLlm(previous: { ids: string[]; at: number } | null, ids: string[], now: number): boolean {
-  if (!previous) return true;
-  if (now - previous.at > LLM_MAX_AGE_MS) return true;
-
-  const seen = new Set(previous.ids);
-  return ids.some((id) => !seen.has(id));
+/** `lastAttempt`: cuándo se llamó a la IA por última vez para este ticker (con éxito o no). */
+export function shouldAskLlm(lastAttempt: number | null, now: number): boolean {
+  return lastAttempt === null || now - lastAttempt >= LLM_INTERVAL_MS;
 }
 
 /** El esquema estricto ya lo exige, pero lo que se pinta se valida aquí: un score de 150 no llega al panel. */

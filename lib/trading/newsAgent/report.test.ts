@@ -156,6 +156,24 @@ describe('buildReport', () => {
     expect(report.llm).toMatchObject({ ok: true, at: NOW, note: 'Resumen anterior — OpenAI no respondió' });
   });
 
+  it('un fallo de la IA no se reintenta hasta pasados 30 min', async () => {
+    const state = createAgentState();
+    const failing = deps({
+      askLlm: vi.fn(async () => {
+        throw new Error('Gemini no respondió');
+      }),
+    });
+    await buildReport('AAPL', failing, state);
+    const soon = await buildReport('AAPL', { ...failing, now: () => NOW + 5 * 60_000 }, state);
+
+    expect(failing.askLlm).toHaveBeenCalledTimes(1);
+    expect(soon.llm).toMatchObject({ ok: false });
+    expect((soon.llm as { reason: string }).reason).toMatch(/próximo resumen de IA/);
+
+    await buildReport('AAPL', { ...failing, now: () => NOW + 30 * 60_000 }, state);
+    expect(failing.askLlm).toHaveBeenCalledTimes(2);
+  });
+
   it('una respuesta de GPT con forma inválida no se pinta', async () => {
     const report = await buildReport('AAPL', deps({ askLlm: async () => '{"score": 999}' }), createAgentState());
     expect(report.llm).toEqual({ ok: false, reason: 'La IA devolvió un formato no reconocido' });

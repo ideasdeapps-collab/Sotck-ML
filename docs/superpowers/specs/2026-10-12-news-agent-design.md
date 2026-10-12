@@ -83,9 +83,9 @@ Todo lo que falte sale como `null`, y el cuadro lo muestra como «n/d».
 - Prompt de sistema, en español: analista de mercado; solo puede usar los datos y titulares
   recibidos; cita los números; 3–4 frases; menciona la geopolítica solo si afecta al ticker o al
   mercado; sin disclaimers.
-- `shouldAskLlm(previous, headlineIds, now)`: devuelve true si no hay resumen previo, si aparece
-  algún titular cuyo id no estaba en la llamada anterior, o si el resumen tiene más de 60 min (para
-  que no cite un VIX que ya no es). Si no, se reutiliza el resumen anterior.
+- `shouldAskLlm(lastAttempt, now)`: como mucho una llamada a la IA cada 30 min por ticker (cambio
+  del 2026-10-12, para ahorrar llamadas a Gemini), haya o no titulares nuevos; un intento fallido
+  también cuenta. Entre medias se reutiliza el resumen anterior.
 
 ### 4. Ruta — `app/api/news-agent/route.ts` (nuevo)
 

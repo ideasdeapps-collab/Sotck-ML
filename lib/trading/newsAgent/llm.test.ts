@@ -1,26 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { LLM_MAX_AGE_MS, buildBrief, parseLlmReport, shouldAskLlm } from './llm';
+import { LLM_INTERVAL_MS, buildBrief, parseLlmReport, shouldAskLlm } from './llm';
 import { NOW, llmOk } from './fixtures';
 import type { Headline, NewsData } from './types';
 
 describe('shouldAskLlm', () => {
-  const previous = { ids: ['a', 'b'], at: NOW - 10 * 60_000 };
-
-  it('sin resumen previo pregunta', () => {
-    expect(shouldAskLlm(null, [], NOW)).toBe(true);
+  it('sin intento previo pregunta', () => {
+    expect(shouldAskLlm(null, NOW)).toBe(true);
   });
 
-  it('con los mismos titulares reutiliza el resumen', () => {
-    expect(shouldAskLlm(previous, ['b', 'a'], NOW)).toBe(false);
-    expect(shouldAskLlm(previous, ['a'], NOW)).toBe(false);
-  });
-
-  it('un titular nuevo vuelve a preguntar', () => {
-    expect(shouldAskLlm(previous, ['a', 'b', 'c'], NOW)).toBe(true);
-  });
-
-  it('un resumen de más de 60 min se renueva aunque no haya titulares nuevos', () => {
-    expect(shouldAskLlm({ ...previous, at: NOW - LLM_MAX_AGE_MS - 1 }, ['a'], NOW)).toBe(true);
+  it('como mucho una vez cada 30 min, haya o no titulares nuevos', () => {
+    expect(shouldAskLlm(NOW - 10 * 60_000, NOW)).toBe(false);
+    expect(shouldAskLlm(NOW - LLM_INTERVAL_MS + 1, NOW)).toBe(false);
+    expect(shouldAskLlm(NOW - LLM_INTERVAL_MS, NOW)).toBe(true);
   });
 });
 
