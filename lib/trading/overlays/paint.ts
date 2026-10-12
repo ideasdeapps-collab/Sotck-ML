@@ -62,6 +62,7 @@ const COLORS = {
   elliott: '#c084fc',
   elliottRef: 'rgba(148,163,184,0.4)',
   curve1m: '#2dd4bf',
+  livePrice: '#22d3ee',
 } as const;
 
 /** Every layer id an overlay can own, so toggling it off removes all of them. */
@@ -74,6 +75,7 @@ const LAYER_IDS: Record<OverlayId, string[]> = {
   openingRange: ['or-box', 'or-breakout'],
   prevDay: ['pdl'],
   sessions: ['session-shading'],
+  livePrice: ['live-trail'],
   levels: ['sr-levels', 'breakouts'],
   zones: ['fvg', 'order-blocks', 'liquidity'],
   priceAction: ['price-action'],
@@ -106,6 +108,8 @@ export type PaintInput = {
   bias?: PlanBias;
   /** What the copilot has done on this ticker, for the `copilot` overlay. */
   copilot?: CopilotOverlay;
+  /** Precios web ya llevados a su barra, para el overlay `livePrice`. */
+  liveTrail?: { time: number; value: number }[];
 };
 
 /**
@@ -240,6 +244,7 @@ export function paintOverlays({
   remote,
   bias = 'auto',
   copilot,
+  liveTrail = [],
 }: PaintInput): void {
   const snap = snapper(candles);
   const last = candles[candles.length - 1];
@@ -335,6 +340,15 @@ export function paintOverlays({
         }))
     );
   } else clear('sessions');
+
+  // Precio web: un punto por barra por delante de las velas retrasadas.
+  if (on('livePrice') && liveTrail.length > 0) {
+    layer.line(
+      'live-trail',
+      liveTrail.map((point) => ({ time: point.time as Time, value: point.value })),
+      { color: COLORS.livePrice, pointsOnly: true, title: 'Web' }
+    );
+  } else clear('livePrice');
 
   // --- Structure (from /patterns) -----------------------------------------
   const patterns = remote.patterns?.ok ? remote.patterns.data : null;

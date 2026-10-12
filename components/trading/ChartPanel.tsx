@@ -18,6 +18,8 @@ import { paintOverlays } from '@/lib/trading/overlays/paint';
 import { loadRemoteOverlays, requiredSources, type RemoteOverlayData } from '@/lib/trading/overlays/remoteData';
 import { OVERLAYS, blockedReason, type OverlayId } from '@/lib/trading/overlays/registry';
 import { signalLegend } from '@/lib/trading/overlays/signal1mLegend';
+import { liveLegend, trailPoints } from '@/lib/trading/overlays/liveTrail';
+import { useLiveQuote } from '@/lib/trading/useLiveQuote';
 import { calibrate, elliottProbabilitySeries } from '@/lib/trading/priceAction/elliottStart';
 import { useCopilot } from '@/lib/trading/copilot/store';
 import { ownedBy, usePortfolio } from '@/lib/trading/paperEngine';
@@ -73,6 +75,10 @@ export default function ChartPanel() {
   }, [timeframe, capabilities, apiReachable]);
 
   const allowed = useCallback((id: OverlayId) => blocked[id] === null, [blocked]);
+
+  const liveOn = overlays.livePrice && allowed('livePrice');
+  const live = useLiveQuote(ticker, liveOn);
+  const liveTrail = useMemo(() => trailPoints(live.trail, timeframe), [live.trail, timeframe]);
 
   // --- Chart lifecycle: created once, never rebuilt for a data change ------
   useEffect(() => {
@@ -290,8 +296,9 @@ export default function ChartPanel() {
       remote,
       bias: planBias,
       copilot: copilotOverlay,
+      liveTrail,
     });
-  }, [candles, overlays, remote, allowed, planBias, copilotOverlay]);
+  }, [candles, overlays, remote, allowed, planBias, copilotOverlay, liveTrail]);
 
   /**
    * Resumen del oscilador de Elliott.
@@ -381,10 +388,18 @@ export default function ChartPanel() {
     return signalLegend(result.data);
   })();
 
+  /** Último precio web frente al cierre de la última vela de Polygon. */
+  const liveLegendText = (() => {
+    const latest = live.trail[live.trail.length - 1];
+    if (!liveOn || !latest) return '';
+    return liveLegend(latest, (candles[candles.length - 1] as Candle | undefined)?.close ?? null);
+  })();
+
   /** Failures that the toggles alone cannot explain. */
   const overlayErrors = Object.entries(remote)
     .filter(([, result]) => result && !result.ok)
     .map(([key, result]) => `${key}: ${(result as { reason: string }).reason}`);
+  if (liveOn && live.error) overlayErrors.push(`precio web: ${live.error}`);
 
   return (
     <section className="chart-panel">
@@ -418,6 +433,7 @@ export default function ChartPanel() {
       {elliottLegend && <p className="chart-panel__elliott">{elliottLegend}</p>}
       {oneMinuteLegend && <p className="chart-panel__onemin">{oneMinuteLegend}</p>}
       {signalLegendText && <p className="chart-panel__onemin">{signalLegendText}</p>}
+      {liveLegendText && <p className="chart-panel__onemin">{liveLegendText}</p>}
 
       {overlayErrors.length > 0 && (
         <p className="chart-panel__error">Overlays sin datos — {overlayErrors.join(' · ')}</p>

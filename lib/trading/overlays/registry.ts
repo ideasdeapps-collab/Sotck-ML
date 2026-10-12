@@ -22,6 +22,7 @@ export type OverlayId =
   | 'openingRange'
   | 'prevDay'
   | 'sessions'
+  | 'livePrice'
   | 'levels'
   | 'zones'
   | 'priceAction'
@@ -65,6 +66,7 @@ export const OVERLAYS: OverlayDef[] = [
   { id: 'openingRange', label: 'Opening Range (15m)', group: 'Day trading', source: 'local', timeframes: INTRADAY, hint: 'Rango de los primeros 15 min y su ruptura' },
   { id: 'prevDay', label: 'Niveles día previo', group: 'Day trading', source: 'local', timeframes: INTRADAY, hint: 'PDH / PDL / PDC de la sesión anterior' },
   { id: 'sessions', label: 'Sesiones', group: 'Day trading', source: 'local', timeframes: INTRADAY, hint: 'Sombreado de premarket y after-hours' },
+  { id: 'livePrice', label: 'Precio web en vivo (rastro)', group: 'Day trading', source: 'local', hint: 'Último precio leído de la web (Yahoo, si no Nasdaq) cada 15 s, sin IA: un punto por barra por delante de las velas de Polygon, que llegan con ~15 min de retraso. Fuentes no oficiales; el rastro se pierde al recargar' },
 
   { id: 'levels', label: 'Soportes y resistencias', group: 'Estructura', source: 'patterns', timeframes: INTRADAY, hint: 'Clustering de pivotes con nº de toques + breakouts con volumen' },
   { id: 'zones', label: 'FVG · Order blocks · Liquidez', group: 'Estructura', source: 'patterns', timeframes: INTRADAY, hint: 'Huecos de valor, bloques institucionales y barridos de liquidez' },
@@ -102,6 +104,7 @@ export const DEFAULT_OVERLAYS: OverlayState = {
   openingRange: false,
   prevDay: false,
   sessions: false,
+  livePrice: false,
   levels: false,
   zones: false,
   priceAction: false,

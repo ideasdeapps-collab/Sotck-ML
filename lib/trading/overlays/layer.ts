@@ -34,6 +34,8 @@ export type LineOptions = {
   pane?: number;
   /** Fija la escala del panel en lugar de dejar que se autoajuste. */
   fixedRange?: { min: number; max: number };
+  /** Solo los puntos, sin trazo entre ellos. */
+  pointsOnly?: boolean;
 };
 
 export type PriceLineSpec = {
@@ -138,6 +140,7 @@ export function createOverlayLayer(
             lastValueVisible: false,
             crosshairMarkerVisible: false,
             title: options.title ?? '',
+            ...(options.pointsOnly ? { lineVisible: false, pointMarkersVisible: true, pointMarkersRadius: 3 } : {}),
             ...(options.fixedRange
               ? {
                   autoscaleInfoProvider: () => ({
