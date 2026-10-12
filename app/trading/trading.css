@@ -1595,3 +1595,140 @@ body {
   stroke-dasharray: 3 3;
   vector-effect: non-scaling-stroke;
 }
+
+/* --- Carrera de 5 min (entre noticias y ecosistema) ----------------------- */
+.race {
+  margin-top: 12px;
+  background: #0b0f14;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.race__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.race__header h3 {
+  margin: 0;
+  font-size: 13px;
+  color: #e2e8f0;
+}
+
+.race__controls { display: flex; gap: 6px; }
+
+.race__controls select,
+.race__controls button,
+.race__custom {
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: 12px;
+  padding: 3px 8px;
+}
+
+.race__controls button { cursor: pointer; }
+.race__controls button:disabled { opacity: 0.4; cursor: default; }
+
+.race__custom {
+  width: 100%;
+  margin-bottom: 10px;
+  box-sizing: border-box;
+}
+
+.race__track { position: relative; }
+
+/* Línea de salida (0 %) en el centro de la pista: a la derecha sube, a la izquierda baja. */
+.race__zero {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(64px + (100% - 64px - 76px) / 2);
+  border-left: 1px dashed #334155;
+}
+
+.race__lane {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
+  display: grid;
+  grid-template-columns: 64px 1fr 76px;
+  align-items: center;
+  transition: transform 0.45s ease;
+}
+
+.race__lane.is-active .race__label { color: #38bdf8; }
+
+.race__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.race__rank {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #1f2937;
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.race__road {
+  position: relative;
+  height: 22px;
+  border-radius: 11px;
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.race__car {
+  position: absolute;
+  top: 2px;
+  transform: translateX(-50%);
+  padding: 2px 6px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #0b0f14;
+  white-space: nowrap;
+  transition: left 0.6s ease;
+}
+
+.race__car.is-up { background: #22c55e; }
+.race__car.is-down { background: #ef4444; }
+
+.race__trail {
+  position: absolute;
+  top: 9px;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: rgba(248, 250, 252, 0.35);
+}
+
+.race__price {
+  text-align: right;
+  font-size: 12px;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}

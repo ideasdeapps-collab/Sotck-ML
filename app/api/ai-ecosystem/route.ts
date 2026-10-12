@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { AI_TICKERS } from '@/lib/trading/aiEcosystem/chain';
-import { parseMinuteAggs, summarizeBars, type TickerMove } from '@/lib/trading/aiEcosystem/moves';
+import { summarizeBars, type TickerMove } from '@/lib/trading/aiEcosystem/moves';
+import { minuteBars } from '@/lib/trading/polygonMinutes';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -8,16 +9,14 @@ export const maxDuration = 30;
 /**
  * Movimiento de cada ticker de la cadena de la IA, de barras de 1 min de Polygon.
  *
- * Una petición por ticker (≈40, en paralelo) con los últimos días en orden
- * descendente: 2 500 barras cubren la sesión de hoy y la anterior entera, con
- * pre y post-market. El plan Starter no limita el número de llamadas, pero sí
- * da los datos con ~15 min de retraso. Caché de 60 s compartida: el panel
- * refresca cada minuto y varias pestañas no multiplican las llamadas.
+ * Una petición por ticker (≈40, en paralelo) vía `lib/trading/polygonMinutes`,
+ * que cachea las barras 60 s y las comparte con la carrera. El plan Starter no
+ * limita el número de llamadas, pero sí da los datos con ~15 min de retraso.
+ * Caché de 60 s del informe: el panel refresca cada minuto y varias pestañas no
+ * multiplican las llamadas.
  */
 
 const CACHE_TTL_MS = 60_000;
-const TIMEOUT_MS = 8000;
-const LOOKBACK_DAYS = 5;
 
 type EcosystemResponse = {
   generatedAt: number;
@@ -28,28 +27,10 @@ type EcosystemResponse = {
 let cached: EcosystemResponse | null = null;
 let pending: Promise<EcosystemResponse> | null = null;
 
-const isoDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-
 async function loadTicker(ticker: string, apiKey: string, now: number): Promise<TickerMove | string> {
-  const url =
-    `https://api.polygon.io/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/minute/` +
-    `${isoDate(now - LOOKBACK_DAYS * 86_400_000)}/${isoDate(now)}` +
-    `?adjusted=true&sort=desc&limit=2500&apiKey=${encodeURIComponent(apiKey)}`;
-
-  try {
-    const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(TIMEOUT_MS) });
-    const json = await response.json().catch(() => null);
-    const bars = parseMinuteAggs(json);
-
-    if (!bars) {
-      const reason = response.status === 429 ? 'límite de Polygon' : json?.error || json?.message || `sin barras (HTTP ${response.status})`;
-      return `${ticker}: ${reason}`;
-    }
-
-    return summarizeBars(bars) ?? `${ticker}: sin barras`;
-  } catch (error: any) {
-    return `${ticker}: ${error?.name === 'TimeoutError' ? 'sin respuesta' : error?.message || 'error'}`;
-  }
+  const bars = await minuteBars(ticker, apiKey, now);
+  if (typeof bars === 'string') return bars;
+  return summarizeBars(bars) ?? `${ticker}: sin barras`;
 }
 
 async function build(apiKey: string): Promise<EcosystemResponse> {
