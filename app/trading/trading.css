@@ -1531,6 +1531,42 @@ body {
 
 .ai-chain__metrics button.is-active { color: #f8fafc; border-color: #38bdf8; }
 
+/* Resumen siempre visible: la cadena en una línea, un bloque por eslabón con su % medio. */
+.ai-chain__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-chain__summary li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 8px;
+  border: 1px solid #1f2937;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #e2e8f0;
+  white-space: nowrap;
+}
+
+.ai-chain__summary li strong { font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* Flecha entre bloques: la cadena va de la energía a los hyperscalers. */
+.ai-chain__summary li + li::before {
+  content: '→';
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #64748b;
+}
+
+.ai-chain__links { margin-top: 10px; }
+
 /* Una columna por eslabón; en pantallas estrechas las columnas bajan de línea. */
 .ai-chain__links {
   display: grid;
@@ -1596,7 +1632,7 @@ body {
   vector-effect: non-scaling-stroke;
 }
 
-/* --- Carrera de 5 min (entre noticias y ecosistema) ----------------------- */
+/* --- Carrera de tickers, del día o de 5 min (entre noticias y ecosistema) ----------------------- */
 .race {
   margin-top: 12px;
   background: #0b0f14;
@@ -1620,7 +1656,7 @@ body {
   color: #e2e8f0;
 }
 
-.race__controls { display: flex; gap: 6px; }
+.race__controls { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .race__controls select,
 .race__controls button,
@@ -1634,6 +1670,7 @@ body {
 }
 
 .race__controls button { cursor: pointer; }
+.race__controls button.is-active { color: #f8fafc; border-color: #38bdf8; }
 .race__controls button:disabled { opacity: 0.4; cursor: default; }
 
 .race__custom {

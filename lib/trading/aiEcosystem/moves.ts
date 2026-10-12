@@ -45,6 +45,23 @@ function closeAtOrBefore(bars: Bar[], limit: number): number | null {
   return null;
 }
 
+/** Epoch ms de las 00:00 ET del día de `t`. */
+export function etDayStart(t: number): number {
+  return dailyDateToEpoch(etParts(t / 1000).date) * 1000;
+}
+
+/**
+ * Cierre regular anterior a `sessionStart`: la última barra antes de las 16:00 ET
+ * de ese día; el after-hours no cuenta, igual que en cualquier «% del día».
+ * `bars` ordenado ascendente.
+ */
+export function previousRegularClose(bars: Bar[], sessionStart: number): number | null {
+  const before = bars.filter((bar) => bar.t < sessionStart);
+  if (before.length === 0) return null;
+  const [year, month, day] = etParts(before[before.length - 1].t / 1000).date.split('-').map(Number);
+  return closeAtOrBefore(before, etWallClockToEpoch(year, month, day, 16, 0) * 1000 - 1);
+}
+
 export function summarizeBars(input: Bar[]): TickerMove | null {
   const bars = input.filter((bar) => Number.isFinite(bar.t) && bar.c > 0).sort((a, b) => a.t - b.t);
   if (bars.length === 0) return null;
@@ -52,17 +69,9 @@ export function summarizeBars(input: Bar[]): TickerMove | null {
   const last = bars[bars.length - 1];
 
   // Límites del día ET con dos llamadas a Intl, no una por barra.
-  const sessionStart = dailyDateToEpoch(etParts(last.t / 1000).date) * 1000;
+  const sessionStart = etDayStart(last.t);
   const today = bars.filter((bar) => bar.t >= sessionStart);
-  const before = bars.filter((bar) => bar.t < sessionStart);
-
-  // Cierre regular anterior: la última barra antes de las 16:00 ET de ese día;
-  // el after-hours no cuenta, igual que en cualquier «% del día».
-  let prevClose: number | null = null;
-  if (before.length > 0) {
-    const [year, month, day] = etParts(before[before.length - 1].t / 1000).date.split('-').map(Number);
-    prevClose = closeAtOrBefore(before, etWallClockToEpoch(year, month, day, 16, 0) * 1000 - 1);
-  }
+  const prevClose = previousRegularClose(bars, sessionStart);
 
   const step = Math.ceil(today.length / SPARK_POINTS);
   const sparkline = today.filter((_, i) => i % step === 0).map((bar) => bar.c);

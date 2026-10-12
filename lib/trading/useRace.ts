@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { fetchJson } from './fetchJson';
-import type { Race } from './race/race';
+import type { Race, RaceMode } from './race/race';
 
 /** Sondea `/api/race` cada minuto con la pestaña visible, y al momento al cambiar la lista. */
 
@@ -12,7 +12,7 @@ export type RaceState = { race: Race | null; failures: string[]; generatedAt: nu
 
 const INITIAL: RaceState = { race: null, failures: [], generatedAt: null, error: '', loading: true };
 
-export function useRace(tickers: string[]): RaceState {
+export function useRace(tickers: string[], mode: RaceMode): RaceState {
   const key = tickers.join(',');
   const [state, setState] = useState<RaceState>(INITIAL);
 
@@ -33,7 +33,7 @@ export function useRace(tickers: string[]): RaceState {
       inFlight = true;
 
       try {
-        const data = await fetchJson(`/api/race?tickers=${encodeURIComponent(key)}`);
+        const data = await fetchJson(`/api/race?mode=${mode}&tickers=${encodeURIComponent(key)}`);
         if (disposed) return;
 
         if (data?.unavailable || !Array.isArray(data?.lanes)) {
@@ -67,7 +67,7 @@ export function useRace(tickers: string[]): RaceState {
       clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [key]);
+  }, [key, mode]);
 
   return state;
 }

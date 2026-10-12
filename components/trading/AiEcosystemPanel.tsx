@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTradingStore } from '@/lib/trading/tradingStore';
 import { useAiEcosystem } from '@/lib/trading/useAiEcosystem';
 import { AI_CHAIN } from '@/lib/trading/aiEcosystem/chain';
@@ -8,10 +8,15 @@ import { linkAverage, moveColor, type MoveMetric, type TickerMove } from '@/lib/
 import { etClock } from '@/lib/trading/newsAgent/format';
 
 /**
- * Cadena de valor de la IA, de la energía a los hyperscalers: una columna por
- * eslabón, una casilla por ticker coloreada por su movimiento y la media del
- * eslabón en la cabecera. Pulsar una casilla la carga en el gráfico.
+ * Cadena de valor de la IA, de la energía a los hyperscalers.
+ *
+ * Siempre a la vista, una línea resumen con el % medio de cada eslabón. El
+ * diagrama completo (una columna por eslabón, una casilla por ticker coloreada
+ * por su movimiento) se despliega con el marcador «Ver diagrama». Pulsar una
+ * casilla la carga en el gráfico.
  */
+
+const OPEN_KEY = 'trading-lab:ai-chain-open';
 
 /** A partir de este %, el color ya está saturado: 3 % en el día es mucho; en 5 min, 0.5 % ya lo es. */
 const METRICS: { id: MoveMetric; label: string; scale: number }[] = [
@@ -74,6 +79,29 @@ export default function AiEcosystemPanel() {
   const { ticker, setTicker } = useTradingStore();
   const { moves, failures, generatedAt, error, loading } = useAiEcosystem();
   const [metric, setMetric] = useState<MoveMetric>('change1d');
+  const [open, setOpen] = useState(false);
+
+  // localStorage solo existe en el navegador: se lee tras montar para no romper la hidratación.
+  useEffect(() => {
+    try {
+      setOpen(window.localStorage.getItem(OPEN_KEY) === '1');
+    } catch {
+      /* sin almacenamiento: empieza plegado */
+    }
+  }, []);
+
+  const toggle = () => {
+    setOpen((current) => {
+      try {
+        window.localStorage.setItem(OPEN_KEY, current ? '0' : '1');
+      } catch {
+        /* modo privado: no se recuerda, nada más */
+      }
+      return !current;
+    });
+  };
+
+  const averages = AI_CHAIN.map((link) => linkAverage(link.tickers.map((entry) => moves[entry.ticker]?.[metric] ?? null)));
 
   const { scale } = METRICS.find((entry) => entry.id === metric)!;
   const lastBar = Object.values(moves).reduce((latest, move) => Math.max(latest, move?.time ?? 0), 0);
@@ -87,6 +115,9 @@ export default function AiEcosystemPanel() {
           {loading && ' · cargando…'}
         </h3>
         <div className="ai-chain__metrics">
+          <button type="button" className={`ai-chain__toggle${open ? ' is-active' : ''}`} onClick={toggle} aria-expanded={open}>
+            {open ? '▾ Ocultar diagrama' : '▸ Ver diagrama'}
+          </button>
           {METRICS.map((entry) => (
             <button key={entry.id} type="button" className={entry.id === metric ? 'is-active' : ''} onClick={() => setMetric(entry.id)}>
               {entry.label}
@@ -97,34 +128,45 @@ export default function AiEcosystemPanel() {
 
       {error && <p className="news-agent__warning">Sin datos del ecosistema: {error}</p>}
 
-      <div className="ai-chain__links">
-        {AI_CHAIN.map((link, index) => {
-          const average = linkAverage(link.tickers.map((entry) => moves[entry.ticker]?.[metric] ?? null));
+      <ol className="ai-chain__summary" aria-label="Resumen por eslabón">
+        {AI_CHAIN.map((link, index) => (
+          <li key={link.id} style={{ background: moveColor(averages[index], scale) }} title={link.tickers.map((entry) => entry.ticker).join(' · ')}>
+            <span>{link.label}</span>
+            <strong>{signed(averages[index])}</strong>
+          </li>
+        ))}
+      </ol>
 
-          return (
-            <div key={link.id} className="ai-chain__link">
-              <div className="ai-chain__link-head" style={{ background: moveColor(average, scale) }}>
-                <span>
-                  {index + 1}. {link.label}
-                </span>
-                <strong>{signed(average)}</strong>
+      {open && (
+        <div className="ai-chain__links">
+          {AI_CHAIN.map((link, index) => {
+            const average = averages[index];
+
+            return (
+              <div key={link.id} className="ai-chain__link">
+                <div className="ai-chain__link-head" style={{ background: moveColor(average, scale) }}>
+                  <span>
+                    {index + 1}. {link.label}
+                  </span>
+                  <strong>{signed(average)}</strong>
+                </div>
+                {link.tickers.map((entry) => (
+                  <Tile
+                    key={entry.ticker}
+                    ticker={entry.ticker}
+                    name={entry.name}
+                    move={moves[entry.ticker]}
+                    metric={metric}
+                    scale={scale}
+                    active={entry.ticker === ticker}
+                    onSelect={() => setTicker(entry.ticker)}
+                  />
+                ))}
               </div>
-              {link.tickers.map((entry) => (
-                <Tile
-                  key={entry.ticker}
-                  ticker={entry.ticker}
-                  name={entry.name}
-                  move={moves[entry.ticker]}
-                  metric={metric}
-                  scale={scale}
-                  active={entry.ticker === ticker}
-                  onSelect={() => setTicker(entry.ticker)}
-                />
-              ))}
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {generatedAt && failures.length > 0 && (
         <p className="news-agent__muted">Sin datos nuevos: {failures.join(' · ')}</p>
