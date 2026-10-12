@@ -64,6 +64,8 @@ const COLORS = {
   elliottRef: 'rgba(148,163,184,0.4)',
   curve1m: '#2dd4bf',
   livePrice: '#22d3ee',
+  // Rosa: no lo usa ninguna otra curva predictiva.
+  aiPrediction: '#fb7185',
 } as const;
 
 /** Every layer id an overlay can own, so toggling it off removes all of them. */
@@ -112,6 +114,8 @@ export type PaintInput = {
   liveTrail?: TrailSlot[];
   /** Último precio web, para la línea horizontal en tiempo real. */
   livePrice?: number | null;
+  /** Predicción de IA ya llevada al eje (ver `aiPrediction/chart.ts`); no es un overlay, se dibuja si existe. */
+  aiPrediction?: TrailSlot[];
 };
 
 /**
@@ -248,6 +252,7 @@ export function paintOverlays({
   copilot,
   liveTrail = [],
   livePrice = null,
+  aiPrediction = [],
 }: PaintInput): void {
   const snap = snapper(candles);
   const last = candles[candles.length - 1];
@@ -353,6 +358,14 @@ export function paintOverlays({
       { color: COLORS.livePrice, pointsOnly: true }
     );
   } else layer.remove('live-trail');
+
+  if (aiPrediction.length > 0) {
+    layer.line(
+      'ai-prediction',
+      aiPrediction.map((slot) => ({ ...slot, time: slot.time as Time })),
+      { color: COLORS.aiPrediction, lineWidth: 2, dashed: true, title: 'IA' }
+    );
+  } else layer.remove('ai-prediction');
 
   layer.priceLines(
     'live-price',

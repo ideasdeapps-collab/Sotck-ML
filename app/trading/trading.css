@@ -1769,3 +1769,81 @@ body {
   color: #94a3b8;
   font-variant-numeric: tabular-nums;
 }
+
+/* --- Predicción IA de la sesión (DeepSeek), bajo el gráfico ----------------- */
+.ai-prediction {
+  margin-top: 12px;
+  background: #0b0f14;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  padding: 14px;
+  font-size: 13px;
+  color: #cbd5e1;
+}
+
+.ai-prediction__header,
+.ai-prediction__list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ai-prediction__header h3 { margin: 0; font-size: 13px; color: #e2e8f0; }
+.ai-prediction__list-head { margin-top: 12px; font-size: 12px; color: #e2e8f0; }
+
+.ai-prediction__actions { display: flex; gap: 6px; }
+
+.ai-prediction__actions button,
+.ai-prediction__headline button {
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: 12px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.ai-prediction__actions button:disabled { opacity: 0.6; cursor: default; }
+.ai-prediction__generate { border-color: #fb7185 !important; color: #fecdd3 !important; }
+
+.ai-prediction__card { margin-top: 10px; }
+
+.ai-prediction__headline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 0 0 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-prediction__headline button { margin-left: auto; }
+
+.ai-prediction__bias {
+  padding: 1px 8px;
+  border-radius: 9px;
+  font-weight: 700;
+  text-transform: capitalize;
+  color: #0b0f14;
+}
+
+.ai-prediction__bias.is-alcista { background: #22c55e; }
+.ai-prediction__bias.is-bajista { background: #ef4444; }
+.ai-prediction__bias.is-lateral { background: #eab308; }
+
+.ai-prediction__bias-text { text-transform: capitalize; }
+.ai-prediction__bias-text.is-alcista { color: #22c55e; }
+.ai-prediction__bias-text.is-bajista { color: #ef4444; }
+.ai-prediction__bias-text.is-lateral { color: #eab308; }
+
+.ai-prediction__table { margin-top: 6px; max-height: 260px; overflow: auto; }
+
+.ai-prediction__table table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.ai-prediction__table th { position: sticky; top: 0; background: #0b0f14; color: #64748b; font-weight: 600; text-align: left; padding: 4px 6px; }
+.ai-prediction__table td { padding: 4px 6px; border-top: 1px solid #1f2937; white-space: nowrap; }
+.ai-prediction__table tbody tr { cursor: pointer; }
+.ai-prediction__table tbody tr:hover { background: rgba(148, 163, 184, 0.06); }
+.ai-prediction__table tbody tr.is-active { background: rgba(251, 113, 133, 0.12); }

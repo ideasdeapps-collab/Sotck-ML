@@ -4,6 +4,7 @@ import type { SeriesMarker, Time } from "lightweight-charts";
 import { DEFAULT_OVERLAYS, type OverlayId, type OverlayState } from "./overlays/registry";
 import type { PlanBias } from "./dayTrading/intradayPlan";
 import type { TickerCapabilities } from "@/types/trading";
+import type { AiPrediction } from "./aiPrediction/types";
 
 export type TradingState = {
   ticker: string;
@@ -26,6 +27,8 @@ export type TradingState = {
    * shared state and not local to the chart.
    */
   dataSource: string;
+  /** Predicción de IA dibujada en el gráfico (solo se ve si es del ticker actual). */
+  aiPrediction: AiPrediction | null;
   watchlist: string[];
   signal: any;
   markers: SeriesMarker<Time>[];
@@ -48,6 +51,7 @@ let state: TradingState = {
   capabilities: null,
   apiReachable: false,
   dataSource: '',
+  aiPrediction: null,
   signal: null,
   markers: [],
   candles: [],
@@ -99,6 +103,7 @@ export const actions = {
   setLive: (live: boolean) => patch({ live }),
   setDataError: (dataError: string) => patch({ dataError }),
   setDataSource: (dataSource: string) => patch({ dataSource }),
+  setAiPrediction: (aiPrediction: AiPrediction | null) => patch({ aiPrediction }),
   setStatus: (status: string) => patch({ status }),
   setOverlay: (id: OverlayId, on: boolean) => patch({ overlays: { ...state.overlays, [id]: on } }),
   setPlanBias: (planBias: PlanBias) => patch({ planBias }),

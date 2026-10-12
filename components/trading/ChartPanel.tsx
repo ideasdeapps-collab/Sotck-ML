@@ -20,6 +20,7 @@ import { OVERLAYS, blockedReason, type OverlayId } from '@/lib/trading/overlays/
 import { signalLegend } from '@/lib/trading/overlays/signal1mLegend';
 import { liveLegend, trailPoints, trailSlots } from '@/lib/trading/overlays/liveTrail';
 import { useLiveQuote } from '@/lib/trading/useLiveQuote';
+import { predictionSlots } from '@/lib/trading/aiPrediction/chart';
 import { calibrate, elliottProbabilitySeries } from '@/lib/trading/priceAction/elliottStart';
 import { useCopilot } from '@/lib/trading/copilot/store';
 import { ownedBy, usePortfolio } from '@/lib/trading/paperEngine';
@@ -54,6 +55,7 @@ export default function ChartPanel() {
     capabilities,
     apiReachable,
     setCapabilities,
+    aiPrediction,
   } = useTradingStore();
 
   const copilotState = useCopilot();
@@ -79,6 +81,13 @@ export default function ChartPanel() {
   const live = useLiveQuote(ticker);
   const livePrice = live.trail[live.trail.length - 1]?.price ?? null;
   const lastCandleTime = (candles[candles.length - 1] as Candle | undefined)?.time ?? null;
+  const aiPredictionSlots = useMemo(() => {
+    if (!aiPrediction || aiPrediction.ticker !== ticker || candles.length === 0) return [];
+    // Arranca en el ancla para que se lea como continuación de las velas.
+    const points = [{ time: aiPrediction.asOf / 1000, value: aiPrediction.anchor }, ...aiPrediction.points.map((point) => ({ time: point.t / 1000, value: point.p }))];
+    return predictionSlots(points, (candles as Candle[]).map((candle) => candle.time), timeframe);
+  }, [aiPrediction, ticker, candles, timeframe]);
+
   const liveTrail = useMemo(
     () => (lastCandleTime === null ? [] : trailSlots(trailPoints(live.trail, timeframe), lastCandleTime, timeframe)),
     [live.trail, timeframe, lastCandleTime]
@@ -302,8 +311,9 @@ export default function ChartPanel() {
       copilot: copilotOverlay,
       liveTrail,
       livePrice,
+      aiPrediction: aiPredictionSlots,
     });
-  }, [candles, overlays, remote, allowed, planBias, copilotOverlay, liveTrail, livePrice]);
+  }, [candles, overlays, remote, allowed, planBias, copilotOverlay, liveTrail, livePrice, aiPredictionSlots]);
 
   /**
    * Resumen del oscilador de Elliott.
