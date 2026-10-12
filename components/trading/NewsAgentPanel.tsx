@@ -9,7 +9,7 @@ import type { Headline } from '@/lib/trading/newsAgent/types';
 /**
  * Cuadro de texto del agente de noticias, bajo el gráfico.
  *
- * Arriba lo que redacta GPT (sentimiento, emoción, resumen, riesgos); debajo la
+ * Arriba lo que redacta la IA (Gemini u OpenAI) (sentimiento, emoción, resumen, riesgos); debajo la
  * línea de datos que sale directamente de las fuentes, para que cada cifra del
  * resumen se pueda comprobar; al final los titulares enlazados.
  */
@@ -93,7 +93,7 @@ export default function NewsAgentPanel() {
               {llm.note && <p className="news-agent__muted">{llm.note}</p>}
             </>
           ) : (
-            <p className="news-agent__warning">Sin resumen de GPT: {llm?.reason}</p>
+            <p className="news-agent__warning">Sin resumen de IA: {llm?.reason}</p>
           )}
 
           <p className="news-agent__data">{dataLine(report.data).join(' · ')}</p>

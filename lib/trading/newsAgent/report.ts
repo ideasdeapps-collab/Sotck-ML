@@ -33,7 +33,7 @@ export type AgentDeps = {
   json(url: string): Promise<unknown>;
   text(url: string): Promise<string>;
   dailyCandles(ticker: string): Promise<{ candles: Candle[]; source: string }>;
-  /** Devuelve el contenido del mensaje de GPT; lanza con un motivo legible. */
+  /** Devuelve el contenido del mensaje de la IA (Gemini u OpenAI); lanza con un motivo legible. */
   askLlm(brief: ReturnType<typeof buildBrief>): Promise<unknown>;
   polygonKey: string | undefined;
   llmAvailable: boolean;
@@ -42,7 +42,7 @@ export type AgentDeps = {
 
 type LlmMemo = { ids: string[]; at: number; report: LlmReport; model: string };
 
-/** Estado entre llamadas: último resumen por ticker y llamadas a GPT del día. */
+/** Estado entre llamadas: último resumen por ticker y llamadas a la IA del día. */
 export type AgentState = { memo: Map<string, LlmMemo>; budget: { day: string; calls: number } };
 
 export function createAgentState(): AgentState {
@@ -131,7 +131,7 @@ async function summarise(
   deps: AgentDeps,
   state: AgentState
 ): Promise<NewsReport['llm']> {
-  if (!deps.llmAvailable) return { ok: false, reason: 'OPENAI_API_KEY no está configurada — solo datos y titulares' };
+  if (!deps.llmAvailable) return { ok: false, reason: 'Ni GEMINI_API_KEY ni OPENAI_API_KEY están configuradas — solo datos y titulares' };
 
   // Sin titulares GPT solo podría glosar números que el panel ya enseña, o inventar.
   if (headlines.length === 0 && macro.length === 0) return { ok: false, reason: 'Sin titulares que resumir' };
@@ -147,7 +147,7 @@ async function summarise(
   if (state.budget.day !== day) state.budget = { day, calls: 0 };
 
   if (state.budget.calls >= DAILY_LLM_CALLS) {
-    const reason = `Tope de ${DAILY_LLM_CALLS} resúmenes de GPT por día alcanzado`;
+    const reason = `Tope de ${DAILY_LLM_CALLS} resúmenes de IA por día alcanzado`;
     return previous(`Resumen anterior — ${reason}`) ?? { ok: false, reason };
   }
 
@@ -155,7 +155,7 @@ async function summarise(
 
   try {
     const report = parseLlmReport(await deps.askLlm(buildBrief({ ticker, data, headlines, macro, now })));
-    if (!report) throw new Error('GPT devolvió un formato no reconocido');
+    if (!report) throw new Error('La IA devolvió un formato no reconocido');
 
     state.memo.set(ticker, { ids, at: now, report, model: deps.model });
     return { ok: true, ...report, at: now, model: deps.model };

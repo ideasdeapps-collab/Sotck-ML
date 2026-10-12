@@ -114,11 +114,11 @@ describe('buildReport', () => {
     expect(report.failures).toContain('Momentum: velas simuladas (sin POLYGON_API_KEY)');
   });
 
-  it('sin OPENAI_API_KEY entrega datos y titulares sin resumen', async () => {
+  it('sin clave de IA entrega datos y titulares sin resumen', async () => {
     const d = deps({ llmAvailable: false });
     const report = await buildReport('AAPL', d, createAgentState());
 
-    expect(report.llm).toEqual({ ok: false, reason: 'OPENAI_API_KEY no está configurada — solo datos y titulares' });
+    expect(report.llm).toEqual({ ok: false, reason: 'Ni GEMINI_API_KEY ni OPENAI_API_KEY están configuradas — solo datos y titulares' });
     expect(report.headlines.length).toBeGreaterThan(0);
     expect(d.askLlm).not.toHaveBeenCalled();
   });
@@ -130,7 +130,7 @@ describe('buildReport', () => {
     const report = await buildReport('AAPL', d, state);
 
     expect(d.askLlm).not.toHaveBeenCalled();
-    expect(report.llm).toEqual({ ok: false, reason: `Tope de ${DAILY_LLM_CALLS} resúmenes de GPT por día alcanzado` });
+    expect(report.llm).toEqual({ ok: false, reason: `Tope de ${DAILY_LLM_CALLS} resúmenes de IA por día alcanzado` });
   });
 
   it('el tope se reinicia al cambiar el día en Nueva York', async () => {
@@ -158,6 +158,6 @@ describe('buildReport', () => {
 
   it('una respuesta de GPT con forma inválida no se pinta', async () => {
     const report = await buildReport('AAPL', deps({ askLlm: async () => '{"score": 999}' }), createAgentState());
-    expect(report.llm).toEqual({ ok: false, reason: 'GPT devolvió un formato no reconocido' });
+    expect(report.llm).toEqual({ ok: false, reason: 'La IA devolvió un formato no reconocido' });
   });
 });

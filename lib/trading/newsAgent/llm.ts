@@ -38,6 +38,22 @@ export const NEWS_SCHEMA = {
   },
 } as const;
 
+/**
+ * El mismo esquema en el dialecto de Gemini (`responseSchema`, subconjunto de
+ * OpenAPI): sin `additionalProperties` ni `strict`, que Gemini rechaza.
+ */
+export const GEMINI_SCHEMA = {
+  type: 'OBJECT',
+  required: ['score', 'emotion', 'summary', 'risks'],
+  propertyOrdering: ['score', 'emotion', 'summary', 'risks'],
+  properties: {
+    score: { type: 'INTEGER' },
+    emotion: { type: 'STRING', enum: [...EMOTIONS] },
+    summary: { type: 'STRING' },
+    risks: { type: 'ARRAY', items: { type: 'STRING' } },
+  },
+} as const;
+
 const etTime = (ms: number) =>
   `${new Date(ms).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' })} ET`;
 
