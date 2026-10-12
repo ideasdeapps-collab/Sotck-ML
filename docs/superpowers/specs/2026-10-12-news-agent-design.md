@@ -42,7 +42,7 @@ con funciones exportadas para que la ruta solo haga `fetch`.
 | Bloque | Fuente | Qué se extrae |
 |---|---|---|
 | Noticias del ticker | Polygon `GET /v2/reference/news?ticker=X&order=desc&sort=published_utc&limit=20` (`POLYGON_API_KEY`) | título, editor, URL, `published_utc`, y del `insights[]` del ticker: `sentiment` y `sentiment_reasoning` |
-| Noticias del ticker | RSS de Yahoo `feeds.finance.yahoo.com/rss/2.0/headline?s=X` y Google News `news.google.com/rss/search?q=X+stock+when:1d` | título, enlace, `pubDate`, fuente |
+| Noticias del ticker | RSS de Yahoo `feeds.finance.yahoo.com/rss/2.0/headline?s=X` y Google News `news.google.com/rss/search?q="X"+when:1d` (entre comillas: sin ellas cuela artículos de otras empresas) | título, enlace, `pubDate`, fuente |
 | Geopolítica / macro | Google News RSS, consulta fija: `(geopolitical OR tariffs OR "Federal Reserve" OR sanctions) markets when:1d` | título, enlace, `pubDate`, fuente |
 | Analistas | Nasdaq `api/analyst/X/ratings` y `api/analyst/X/targetprice` | `meanRatingType`, nº de analistas, compra/mantener/venta, precio objetivo medio, mínimo y máximo |
 | Earnings | Nasdaq `api/analyst/X/earnings-date` | fecha, antes/después del cierre y BPA de consenso, leídos de `reportText` con regex |

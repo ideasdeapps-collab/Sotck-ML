@@ -20,6 +20,10 @@ export type LiveQuote = {
 
 const TICKER = /^[A-Z][A-Z0-9.\-]{0,9}$/;
 
+/** Sin un User-Agent de navegador, Nasdaq deja la conexión colgada y Yahoo a veces responde 429. */
+export const BROWSER_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
+
 /** El ticker acaba dentro de una URL externa: solo pasa lo que tiene forma de símbolo. */
 export function isValidTicker(ticker: string): boolean {
   return TICKER.test(ticker);

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import {
+  BROWSER_USER_AGENT,
   isValidTicker,
   nasdaqUrl,
   parseNasdaqQuote,
@@ -26,11 +27,7 @@ const CACHE_TTL_MS = 10_000;
 /** Varias pestañas abiertas consultan el mismo ticker: una petición a la fuente cada 10 s basta. */
 const cache = new Map<string, { quote: LiveQuote; expiresAt: number }>();
 
-const HEADERS = {
-  // Sin un User-Agent de navegador, Nasdaq deja la conexión colgada.
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
-  Accept: 'application/json',
-};
+const HEADERS = { 'User-Agent': BROWSER_USER_AGENT, Accept: 'application/json' };
 
 type Attempt = { name: string; url: string; parse: (json: unknown) => LiveQuote | null };
 
