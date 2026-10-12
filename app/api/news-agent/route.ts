@@ -30,12 +30,24 @@ const LLM_TIMEOUT_MS = 20_000;
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const DEFAULT_MODEL = 'gpt-4o-mini';
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
-const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+/**
+ * Modelos de Gemini por orden de preferencia: el más barato vigente primero.
+ * Google retira modelos para cuentas nuevas sin aviso en el código (pasó con
+ * gemini-2.5-flash), así que si uno ya no existe se prueba el siguiente y se
+ * recuerda el que respondió.
+ */
+const GEMINI_FALLBACKS = ['gemini-3.1-flash-lite', 'gemini-3.8-flash'];
+let geminiModel: string | null = null;
+
+const geminiCandidates = () =>
+  Array.from(new Set([geminiModel, process.env.GEMINI_MODEL, ...GEMINI_FALLBACKS].filter((model): model is string => Boolean(model))));
 
 /** Gemini manda si tiene clave; si no, OpenAI. */
 const useGemini = () => Boolean(process.env.GEMINI_API_KEY);
-const llmModel = () =>
-  useGemini() ? process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL : process.env.OPENAI_MODEL || DEFAULT_MODEL;
+const llmModel = () => (useGemini() ? geminiCandidates()[0] : process.env.OPENAI_MODEL || DEFAULT_MODEL);
+
+/** Error de Gemini que significa «ese modelo no existe o ya no está disponible»: vale la pena probar otro. */
+class GeminiModelUnavailable extends Error {}
 
 const reports = new Map<string, NewsReport>();
 /** Dos pestañas que piden el mismo ticker a la vez esperan el mismo informe en vez de pagar dos. */
@@ -59,7 +71,24 @@ async function get(url: string, accept: string): Promise<Response> {
 }
 
 async function askGemini(brief: unknown): Promise<unknown> {
-  const response = await fetch(`${GEMINI_URL}/${encodeURIComponent(llmModel())}:generateContent`, {
+  let lastError: Error | null = null;
+
+  for (const model of geminiCandidates()) {
+    try {
+      const content = await askGeminiModel(model, brief);
+      geminiModel = model;
+      return content;
+    } catch (error: any) {
+      if (!(error instanceof GeminiModelUnavailable)) throw error;
+      lastError = error;
+    }
+  }
+
+  throw lastError ?? new Error('Ningún modelo de Gemini disponible');
+}
+
+async function askGeminiModel(model: string, brief: unknown): Promise<unknown> {
+  const response = await fetch(`${GEMINI_URL}/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY! },
     body: JSON.stringify({
@@ -82,7 +111,11 @@ async function askGemini(brief: unknown): Promise<unknown> {
     } catch {
       /* respuesta no-JSON: se queda el código de estado */
     }
-    throw new Error(`Gemini rechazó la petición — ${detail}`);
+    const message = `Gemini (${model}) rechazó la petición — ${detail}`;
+    if (response.status === 404 || /no longer available|not found|is not supported|unknown model/i.test(detail)) {
+      throw new GeminiModelUnavailable(message);
+    }
+    throw new Error(message);
   }
 
   try {
@@ -150,7 +183,10 @@ function deps(): AgentDeps {
     askLlm: (brief) => (useGemini() ? askGemini(brief) : askOpenAi(brief)),
     polygonKey: process.env.POLYGON_API_KEY || undefined,
     llmAvailable: Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY),
-    model: llmModel(),
+    // Getter: el modelo de Gemini que responde puede cambiar durante la petición.
+    get model() {
+      return llmModel();
+    },
   };
 }
 
