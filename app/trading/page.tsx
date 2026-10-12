@@ -1,6 +1,7 @@
 import TradingSidebar from '@/components/trading/TradingSidebar';
 import ChartPanel from '@/components/trading/ChartPanel';
 import NewsAgentPanel from '@/components/trading/NewsAgentPanel';
+import AiEcosystemPanel from '@/components/trading/AiEcosystemPanel';
 import TradingSimulator from '@/components/trading/TradingSimulator';
 import StrategiesPanel from '@/components/trading/StrategiesPanel';
 import IndicatorsPanel from '@/components/trading/IndicatorsPanel';
@@ -22,6 +23,7 @@ export default function TradingPage() {
       <section className="trading-main">
         <ChartPanel />
         <NewsAgentPanel />
+        <AiEcosystemPanel />
         <div className="trading-grid">
           <CopilotPanel />
           <TradePlanPanel />
