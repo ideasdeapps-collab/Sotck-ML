@@ -10,6 +10,7 @@ import type { LiveQuote } from '../liveQuote/sources';
 import type { NewsReport } from '../newsAgent/types';
 import { compactJson } from './compact';
 import { etHHMM, type SessionWindow } from './session';
+import { summarizeHorizons } from './score';
 import type { AiPrediction } from './types';
 
 /**
@@ -113,6 +114,16 @@ function historyBlock(history: AiPrediction[]) {
       acierto_direccion_pct: scored.length
         ? round((scored.filter((item) => item.score!.directionHit).length / scored.length) * 100, 0)
         : null,
+      // Si tu error no es menor que el de «plano» (el precio no se mueve), tu predicción no aporta: acércate al plano.
+      frente_a_ingenuas: summarizeHorizons(history.map((item) => item.score)).map((row) => ({
+        horizonte: row.label,
+        n: row.n,
+        tu_error_pct: row.ai,
+        error_plano_pct: row.flat,
+        error_momentum_pct: row.momentum,
+        tu_acierto_direccion_pct: row.aiHits,
+        acierto_momentum_pct: row.momentumHits,
+      })),
     },
     predicciones: history.map((item) => ({
       fecha: item.sessionDate,

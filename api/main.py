@@ -24,6 +24,7 @@ import sys
 sys.path.append(str(Path(__file__).resolve().parent.parent / "training"))
 from train_xgb import fetch_polygon, add_features, FEATURE_COLS  # noqa: E402
 
+import polygon_client                           # noqa: E402
 from simulate import monte_carlo_gbm            # noqa: E402
 from intraday import analyze_intraday           # noqa: E402
 from signals import combined_signals, scan_watchlist  # noqa: E402
@@ -212,7 +213,10 @@ def quote(ticker: str):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "time": dt.datetime.utcnow().isoformat() + "Z"}
+    # polygon: límite de llamadas por minuto en uso. Con el valor por defecto (5)
+    # los endpoints intradía esperan hasta ~45 s al estrangulador.
+    return {"status": "ok", "time": dt.datetime.utcnow().isoformat() + "Z",
+            "polygon": polygon_client.cache_stats()}
 
 
 @app.get("/models")

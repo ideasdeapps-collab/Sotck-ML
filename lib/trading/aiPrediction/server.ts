@@ -27,9 +27,17 @@ import type { AiPrediction } from './types';
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
 const DEFAULT_MODEL = 'deepseek-chat';
-const LLM_TIMEOUT_MS = 70_000;
+const LLM_TIMEOUT_MS = 65_000;
 /** Cada fuente tiene este tiempo; la que no llega se queda fuera del contexto. */
 const SOURCE_TIMEOUT_MS = 20_000;
+/**
+ * La API de ML (Render) tarda 15–45 s en sus endpoints pesados; con 20 s se
+ * perdían justo los modelos con ventaja medida. 50 s cabe en el maxDuration
+ * de la ruta junto con DeepSeek.
+ */
+const ML_TIMEOUT_MS = 50_000;
+/** Salidas de ML reutilizables entre el calentamiento y la generación. */
+const ML_CACHE_TTL_MS = 3 * 60_000;
 const HISTORY_SIZE = 8;
 const MINUTE = 60_000;
 
@@ -46,20 +54,61 @@ const ML_ENDPOINTS: Record<string, (ticker: string) => string> = {
 
 export const deepseekModel = () => process.env.DEEPSEEK_MODEL || DEFAULT_MODEL;
 
-function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, label: string, ms = SOURCE_TIMEOUT_MS): Promise<T> {
   return Promise.race([
     promise,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${label}: sin respuesta en ${SOURCE_TIMEOUT_MS / 1000} s`)), SOURCE_TIMEOUT_MS)),
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`sin respuesta en ${ms / 1000} s`)), ms)),
   ]);
 }
+
+const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
 
 async function mlJson(path: string): Promise<unknown> {
   const base = process.env.ML_API_URL;
   if (!base) throw new Error('ML_API_URL no está configurada');
-  const response = await fetch(`${base.replace(/\/$/, '')}/${path}`, { cache: 'no-store', signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS) });
+  const response = await fetch(`${base.replace(/\/$/, '')}/${path}`, { cache: 'no-store', signal: AbortSignal.timeout(ML_TIMEOUT_MS) }).catch(
+    (error) => {
+      throw new Error(error?.name === 'TimeoutError' ? `sin respuesta en ${ML_TIMEOUT_MS / 1000} s` : error?.message || 'error de red');
+    }
+  );
   const json = await response.json().catch(() => null);
   if (!response.ok || !json) throw new Error(json?.detail || `HTTP ${response.status}`);
   return json;
+}
+
+/** Resultado de un endpoint de ML: la respuesta o el motivo, y cuánto tardó. */
+export type MlOutcome = { label: string; ms: number } & ({ ok: true; data: unknown } | { ok: false; reason: string });
+
+const mlCache = new Map<string, { at: number; promise: Promise<MlOutcome[]> }>();
+
+/**
+ * Todas las salidas de ML del ticker, en paralelo. Se cachean 3 min y las
+ * peticiones en vuelo se comparten: el panel «calienta» al elegir ticker y la
+ * generación reutiliza ese resultado (o espera al que ya está en camino) en
+ * lugar de volver a cargar la API de ML con las mismas siete peticiones.
+ */
+export function mlContext(ticker: string): Promise<MlOutcome[]> {
+  const hit = mlCache.get(ticker);
+  if (hit && Date.now() - hit.at < ML_CACHE_TTL_MS) return hit.promise;
+
+  const promise = Promise.all(
+    Object.entries(ML_ENDPOINTS).map(async ([label, path]): Promise<MlOutcome> => {
+      const started = Date.now();
+      try {
+        const data = await mlJson(path(encodeURIComponent(ticker)));
+        return { label, ms: Date.now() - started, ok: true, data };
+      } catch (error: any) {
+        return { label, ms: Date.now() - started, ok: false, reason: error?.message || 'error' };
+      }
+    })
+  );
+
+  mlCache.set(ticker, { at: Date.now(), promise });
+  // Un calentamiento en el que todo falló no debe bloquear 3 min un reintento.
+  promise.then((outcomes) => {
+    if (outcomes.every((outcome) => !outcome.ok)) mlCache.delete(ticker);
+  });
+  return promise;
 }
 
 async function askDeepSeek(brief: unknown): Promise<string> {
@@ -105,7 +154,9 @@ async function askDeepSeek(brief: unknown): Promise<string> {
 export async function withScores(predictions: AiPrediction[], polygonKey: string | undefined): Promise<AiPrediction[]> {
   if (!polygonKey) return predictions;
 
-  const pending = predictions.filter((item) => !item.score?.complete);
+  // Los resultados guardados antes de que existieran los horizontes se recalculan si aún hay barras.
+  const stale = (item: AiPrediction) => !item.score?.complete || !item.score.horizons;
+  const pending = predictions.filter(stale);
   const tickers = Array.from(new Set(pending.map((item) => item.ticker))).slice(0, 12);
   const barsByTicker = new Map<string, Bar[]>();
 
@@ -119,9 +170,9 @@ export async function withScores(predictions: AiPrediction[], polygonKey: string
   return Promise.all(
     predictions.map(async (item) => {
       const bars = barsByTicker.get(item.ticker);
-      if (item.score?.complete || !bars) return item;
+      if (!stale(item) || !bars) return item;
 
-      const score = scorePrediction(item.points, item.anchor, bars);
+      const score = scorePrediction(item.points, item.anchor, bars, item.asOf);
       if (score.complete) await saveScore(item.id, score).catch(() => undefined);
       return { ...item, score };
     })
@@ -160,7 +211,7 @@ export async function generatePrediction(ticker: string): Promise<AiPrediction> 
     }
   }
 
-  const [candles5m, live, news, ecosystem, history, ...mlResults] = await Promise.all([
+  const [candles5m, live, news, ecosystem, history, mlOutcomes] = await Promise.all([
     source('velas 5m', async () => {
       const { candles, source: origin } = await getCandles(ticker, '5m');
       if (origin === 'demo') throw new Error('solo hay velas simuladas');
@@ -174,14 +225,18 @@ export async function generatePrediction(ticker: string): Promise<AiPrediction> 
     source('noticias', async () => (await getNewsReport(ticker)).report),
     source('ecosistema IA', async () => (await getEcosystem(polygonKey)).report),
     source('historial', async () => withScores(await listPredictions(ticker, HISTORY_SIZE), polygonKey)),
-    ...Object.entries(ML_ENDPOINTS).map(([label, path]) => source(`ML ${label}`, () => mlJson(path(encodeURIComponent(ticker))))),
+    mlContext(ticker),
   ]);
 
-  const ml = Object.fromEntries(
-    Object.keys(ML_ENDPOINTS)
-      .map((label, i) => [label, mlResults[i]] as const)
-      .filter(([, value]) => value !== null)
-  );
+  const ml: Record<string, unknown> = {};
+  for (const outcome of mlOutcomes) {
+    if (outcome.ok) {
+      ml[outcome.label] = outcome.data;
+      sources.push(`ML ${outcome.label} (${seconds(outcome.ms)})`);
+    } else {
+      failures.push(`ML ${outcome.label}: ${outcome.reason} (${seconds(outcome.ms)})`);
+    }
+  }
 
   const brief = buildBrief({
     ticker,

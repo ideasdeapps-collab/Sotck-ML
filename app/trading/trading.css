@@ -1847,3 +1847,7 @@ body {
 .ai-prediction__table tbody tr { cursor: pointer; }
 .ai-prediction__table tbody tr:hover { background: rgba(148, 163, 184, 0.06); }
 .ai-prediction__table tbody tr.is-active { background: rgba(251, 113, 133, 0.12); }
+
+.ai-prediction__baseline { margin: 6px 0 10px; font-size: 12px; color: #cbd5e1; }
+.ai-prediction__table td.is-better { color: #22c55e; }
+.ai-prediction__table td.is-worse { color: #ef4444; }

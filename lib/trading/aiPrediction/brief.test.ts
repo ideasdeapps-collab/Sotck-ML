@@ -54,6 +54,7 @@ describe('buildBrief', () => {
       error_medio_pct: 2,
       sesgo_medio_final_pct: 2,
       acierto_direccion_pct: 0,
+      frente_a_ingenuas: [],
     });
   });
 });

@@ -5,6 +5,7 @@ import { useTradingStore } from '@/lib/trading/tradingStore';
 import { useAiPredictions } from '@/lib/trading/useAiPredictions';
 import { etHHMM } from '@/lib/trading/aiPrediction/session';
 import { etParts } from '@/lib/trading/chartTime';
+import { summarizeHorizons } from '@/lib/trading/aiPrediction/score';
 import type { AiPrediction, PredictionScore } from '@/lib/trading/aiPrediction/types';
 
 /**
@@ -26,17 +27,115 @@ function finalMove(prediction: AiPrediction): number | null {
 function scoreText(score: PredictionScore | null): string {
   if (!score || score.evaluated === 0) return 'sin evaluar aún';
   const parts = [`${score.evaluated}/${score.total} pts`];
-  if (score.maePct !== null) parts.push(`error medio ${score.maePct.toFixed(2)}%`);
+  if (score.maePct !== null) {
+    parts.push(
+      `error medio ${score.maePct.toFixed(2)}%` +
+        (score.flatMaePct != null ? ` (plano ${score.flatMaePct.toFixed(2)}%${score.maePct < score.flatMaePct ? ' ✓' : ' ✗'})` : '')
+    );
+  }
   if (score.directionHit !== null) parts.push(`dirección ${score.directionHit ? '✓' : '✗'}`);
   return parts.join(' · ');
 }
 
 const todayEt = () => etParts(Date.now() / 1000).date;
 
+const pct = (value: number | null | undefined) => (value == null ? 'n/d' : `${value.toFixed(2)}%`);
+const hits = (value: number | null) => (value === null ? 'n/d' : `${value}%`);
+
+/** Horizontes de una predicción: IA frente a plano y momentum. */
+function HorizonTable({ score }: { score: PredictionScore | null }) {
+  const rows = score?.horizons ?? [];
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="ai-prediction__table">
+      <table>
+        <thead>
+          <tr>
+            <th>Horizonte</th>
+            <th>IA → real</th>
+            <th>Error IA</th>
+            <th>Plano</th>
+            <th>Momentum</th>
+            <th>Dirección IA / mom.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.label}>
+              <td>
+                {row.label} ({etHHMM(row.t)})
+              </td>
+              <td>
+                {signed(row.predictedPct)} → {signed(row.actualPct)}
+              </td>
+              <td className={row.errorPct < row.flatErrorPct ? 'is-better' : 'is-worse'}>{pct(row.errorPct)}</td>
+              <td>{pct(row.flatErrorPct)}</td>
+              <td>{pct(row.momentumErrorPct)}</td>
+              <td>
+                {row.directionHit ? '✓' : '✗'} / {row.momentumHit === null ? 'n/d' : row.momentumHit ? '✓' : '✗'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** ¿Gana la IA a las predicciones ingenuas? Medias sobre las predicciones listadas. */
+function BaselineSummary({ predictions }: { predictions: AiPrediction[] }) {
+  const rows = summarizeHorizons(predictions.map((item) => item.score));
+  if (rows.length === 0) {
+    return (
+      <p className="news-agent__muted">
+        Frente a las ingenuas: aún ninguna predicción llegó a 30 min. Hacen falta varias sesiones completas para saber si la IA aporta.
+      </p>
+    );
+  }
+
+  return (
+    <div className="ai-prediction__baseline">
+      <strong>¿Gana la IA a las ingenuas?</strong> (medias de las listadas; «plano» = el precio no se mueve, «momentum» = sigue los 30 min previos)
+      <div className="ai-prediction__table">
+        <table>
+          <thead>
+            <tr>
+              <th>Horizonte</th>
+              <th>n</th>
+              <th>Error IA</th>
+              <th>Plano</th>
+              <th>Momentum</th>
+              <th>Dirección IA</th>
+              <th>Dirección mom.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.label}>
+                <td>{row.label}</td>
+                <td>{row.n}</td>
+                <td className={row.ai < row.flat ? 'is-better' : 'is-worse'}>{pct(row.ai)}</td>
+                <td>{pct(row.flat)}</td>
+                <td>{pct(row.momentum)}</td>
+                <td>{hits(row.aiHits)}</td>
+                <td>{hits(row.momentumHits)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {rows.some((row) => row.n < 20) && (
+        <p className="news-agent__muted">Con menos de ~20 predicciones por horizonte la diferencia todavía puede ser suerte.</p>
+      )}
+    </div>
+  );
+}
+
 export default function AiPredictionPanel() {
   const { ticker, aiPrediction, setAiPrediction, setTicker } = useTradingStore();
   const [all, setAll] = useState(false);
-  const { predictions, listError, loading, generating, generateError, generate, reload } = useAiPredictions(ticker, all);
+  const { mlWarm, mlWarmError, predictions, listError, loading, generating, generateError, generate, reload } = useAiPredictions(ticker, all);
   const [startedAt, setStartedAt] = useState(0);
   const [now, setNow] = useState(() => Date.now());
 
@@ -98,6 +197,15 @@ export default function AiPredictionPanel() {
         </div>
       </header>
 
+      <p className="news-agent__muted">
+        Modelos ML para la IA:{' '}
+        {mlWarmError
+          ? `no se pudieron pedir (${mlWarmError})`
+          : mlWarm === null
+            ? 'cargando (la API de ML tarda hasta ~45 s)…'
+            : mlWarm.map((item) => `${item.label} ${item.ok ? '✓' : '✗'} ${(item.ms / 1000).toFixed(0)} s`).join(' · ')}
+      </p>
+
       {generating && (
         <p className="news-agent__muted">
           Reuniendo velas, indicadores, precio web, noticias, ecosistema, modelos de ML e historial, y esperando a DeepSeek (suele tardar 20–60 s).
@@ -126,6 +234,7 @@ export default function AiPredictionPanel() {
             </p>
           )}
           <p className="news-agent__data">Resultado real: {scoreText(shown.score)}</p>
+          <HorizonTable score={shown.score} />
           <p className="news-agent__muted">
             Sesión {shown.sessionDate} · generada {etHHMM(Date.parse(shown.createdAt))} ET · {shown.model} · contexto: {shown.sources.join(', ') || 'n/d'}
             {shown.failures.length > 0 && ` · sin datos: ${shown.failures.join(' · ')}`}
@@ -150,6 +259,7 @@ export default function AiPredictionPanel() {
       </div>
 
       {listError && <p className="news-agent__warning">{listError}</p>}
+      {predictions.length > 0 && <BaselineSummary predictions={predictions} />}
       {!listError && predictions.length === 0 && !loading && <p className="news-agent__muted">Aún no hay predicciones guardadas.</p>}
 
       {predictions.length > 0 && (

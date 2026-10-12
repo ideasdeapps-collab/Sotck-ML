@@ -20,6 +20,7 @@ Reglas:
 - Parte de «ultima_vela.precio». Si hay precio web en tiempo real, los primeros puntos deben pasar cerca de él: ya es real.
 - Movimientos realistas: usa el ATR de 5 min como orden de magnitud por paso; no dibujes una recta, el precio oscila, respeta soportes, resistencias y el VWAP, y suele haber reversión hacia el VWAP salvo tendencia clara.
 - Aprende del historial: si tus predicciones anteriores tuvieron sesgo (por ejemplo, demasiado alcistas) o fallaron la dirección, corrígelo y dilo en el razonamiento.
+- En «historial.resumen.frente_a_ingenuas» ves tu error frente a «plano» (el precio no se mueve) y «momentum» (sigue los últimos 30 min). Si no ganas al plano en un horizonte, tu proyección para ese horizonte debe quedarse cerca del precio actual.
 - Usa SOLO los datos recibidos; no inventes noticias ni cifras.
 
 Responde SOLO con un objeto json con esta forma:

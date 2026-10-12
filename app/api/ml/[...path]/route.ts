@@ -23,6 +23,9 @@ export const maxDuration = 60;
  * and takes seconds, while `/intraday-live` is meant to be near-live.
  */
 const ENDPOINTS: Record<string, number> = {
+  // Diagnóstico: estado y límite de Polygon de la API de ML.
+  health: 5,
+
   // Capabilities — which tickers actually have a trained model.
   models: 300,
   'models-mlp': 300,

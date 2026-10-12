@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { isValidTicker } from '@/lib/trading/liveQuote/sources';
-import { generatePrediction, withScores } from '@/lib/trading/aiPrediction/server';
+import { generatePrediction, mlContext, withScores } from '@/lib/trading/aiPrediction/server';
 import { listPredictions, storeEnabled } from '@/lib/trading/aiPrediction/store';
 
 export const dynamic = 'force-dynamic';
@@ -12,6 +12,8 @@ export const maxDuration = 120;
  *
  * - GET `?ticker=NVDA` (o `?all=1`): las guardadas, más recientes primero, con
  *   su resultado frente a lo real.
+ * - GET `?warm=NVDA`: pide ya las salidas de ML del ticker (lentas en Render)
+ *   para que la generación las encuentre hechas; devuelve cuánto tardó cada una.
  * - POST `{ ticker }`: genera una nueva con DeepSeek, la guarda y la devuelve.
  *
  * La lógica vive en `lib/trading/aiPrediction`.
@@ -23,6 +25,16 @@ const MAX_LIST = 100;
 const generating = new Map<string, ReturnType<typeof generatePrediction>>();
 
 export async function GET(request: Request) {
+  const warm = (new URL(request.url).searchParams.get('warm') || '').trim().toUpperCase();
+  if (warm) {
+    if (!isValidTicker(warm)) return NextResponse.json({ unavailable: true, reason: 'Ticker no válido' }, { status: 400 });
+    const outcomes = await mlContext(warm);
+    return NextResponse.json({
+      ticker: warm,
+      ml: outcomes.map(({ label, ms, ok, ...rest }) => ({ label, ms, ok, ...(ok ? {} : { reason: (rest as { reason: string }).reason }) })),
+    });
+  }
+
   if (!storeEnabled()) {
     return NextResponse.json({ unavailable: true, reason: 'SUPABASE_URL o SUPABASE_SERVICE_KEY no están configuradas' });
   }

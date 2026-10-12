@@ -12,7 +12,12 @@ import type { AiPrediction } from './aiPrediction/types';
 
 const POLL_MS = 5 * 60_000;
 
+export type MlWarmItem = { label: string; ms: number; ok: boolean; reason?: string };
+
 export type AiPredictionsState = {
+  /** Calentamiento de la API de ML para el ticker: null mientras está en curso. */
+  mlWarm: MlWarmItem[] | null;
+  mlWarmError: string;
   predictions: AiPrediction[];
   listError: string;
   loading: boolean;
@@ -29,6 +34,28 @@ export function useAiPredictions(ticker: string, all: boolean): AiPredictionsSta
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  const [mlWarm, setMlWarm] = useState<MlWarmItem[] | null>(null);
+  const [mlWarmError, setMlWarmError] = useState('');
+
+  // Al elegir ticker se piden ya las salidas de ML: tardan hasta ~45 s en Render
+  // y así la generación las encuentra hechas (el servidor las guarda 3 min).
+  useEffect(() => {
+    let disposed = false;
+    setMlWarm(null);
+    setMlWarmError('');
+    fetchJson(`/api/ai-prediction?warm=${encodeURIComponent(ticker)}`)
+      .then((data) => {
+        if (disposed) return;
+        if (Array.isArray(data?.ml)) setMlWarm(data.ml);
+        else setMlWarmError(String(data?.reason || 'sin respuesta'));
+      })
+      .catch((error) => {
+        if (!disposed) setMlWarmError(error?.message || 'sin respuesta');
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [ticker]);
 
   useEffect(() => {
     let disposed = false;
@@ -89,5 +116,5 @@ export function useAiPredictions(ticker: string, all: boolean): AiPredictionsSta
 
   const reload = useCallback(() => setReloadKey((key) => key + 1), []);
 
-  return { predictions, listError, loading, generating, generateError, generate, reload };
+  return { mlWarm, mlWarmError, predictions, listError, loading, generating, generateError, generate, reload };
 }
