@@ -24,6 +24,8 @@ import { BoxPrimitive, type Box } from './boxPrimitive';
 const EXTRA_PANE_HEIGHT = 120;
 
 export type LinePoint = { time: Time; value: number };
+/** Ranura del eje sin valor: reserva sitio en el tiempo sin dibujar nada. */
+export type WhitespacePoint = { time: Time };
 
 export type LineOptions = {
   color: string;
@@ -47,7 +49,7 @@ export type PriceLineSpec = {
 };
 
 export type OverlayLayer = {
-  line(id: string, points: LinePoint[], options: LineOptions): void;
+  line(id: string, points: (LinePoint | WhitespacePoint)[], options: LineOptions): void;
   priceLines(id: string, levels: PriceLineSpec[]): void;
   boxes(id: string, boxes: Box[]): void;
   markers(id: string, markers: SeriesMarker<Time>[]): void;

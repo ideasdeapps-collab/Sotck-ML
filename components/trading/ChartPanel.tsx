@@ -18,7 +18,7 @@ import { paintOverlays } from '@/lib/trading/overlays/paint';
 import { loadRemoteOverlays, requiredSources, type RemoteOverlayData } from '@/lib/trading/overlays/remoteData';
 import { OVERLAYS, blockedReason, type OverlayId } from '@/lib/trading/overlays/registry';
 import { signalLegend } from '@/lib/trading/overlays/signal1mLegend';
-import { liveLegend, trailPoints } from '@/lib/trading/overlays/liveTrail';
+import { liveLegend, trailPoints, trailSlots } from '@/lib/trading/overlays/liveTrail';
 import { useLiveQuote } from '@/lib/trading/useLiveQuote';
 import { calibrate, elliottProbabilitySeries } from '@/lib/trading/priceAction/elliottStart';
 import { useCopilot } from '@/lib/trading/copilot/store';
@@ -78,7 +78,11 @@ export default function ChartPanel() {
 
   const liveOn = overlays.livePrice && allowed('livePrice');
   const live = useLiveQuote(ticker, liveOn);
-  const liveTrail = useMemo(() => trailPoints(live.trail, timeframe), [live.trail, timeframe]);
+  const lastCandleTime = (candles[candles.length - 1] as Candle | undefined)?.time ?? null;
+  const liveTrail = useMemo(
+    () => (lastCandleTime === null ? [] : trailSlots(trailPoints(live.trail, timeframe), lastCandleTime, timeframe)),
+    [live.trail, timeframe, lastCandleTime]
+  );
 
   // --- Chart lifecycle: created once, never rebuilt for a data change ------
   useEffect(() => {

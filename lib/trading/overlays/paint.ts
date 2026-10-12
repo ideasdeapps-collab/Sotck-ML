@@ -12,6 +12,7 @@ import type { OverlayLayer, LinePoint, PriceLineSpec } from './layer';
 import type { Box } from './boxPrimitive';
 import type { OverlayId, OverlayState } from './registry';
 import type { RemoteOverlayData } from './remoteData';
+import type { TrailSlot } from './liveTrail';
 import type { CurvePoint } from '@/types/trading';
 
 /**
@@ -108,8 +109,8 @@ export type PaintInput = {
   bias?: PlanBias;
   /** What the copilot has done on this ticker, for the `copilot` overlay. */
   copilot?: CopilotOverlay;
-  /** Precios web ya llevados a su barra, para el overlay `livePrice`. */
-  liveTrail?: { time: number; value: number }[];
+  /** Precios web ya llevados a su barra, con las ranuras vacías del retraso, para `livePrice`. */
+  liveTrail?: TrailSlot[];
 };
 
 /**
@@ -345,7 +346,7 @@ export function paintOverlays({
   if (on('livePrice') && liveTrail.length > 0) {
     layer.line(
       'live-trail',
-      liveTrail.map((point) => ({ time: point.time as Time, value: point.value })),
+      liveTrail.map((slot) => ({ ...slot, time: slot.time as Time })),
       { color: COLORS.livePrice, pointsOnly: true, title: 'Web' }
     );
   } else clear('livePrice');

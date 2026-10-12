@@ -60,3 +60,38 @@ export function liveLegend(quote: LiveQuote, lastCandleClose: number | null): st
 
   return text;
 }
+
+/**
+ * Más allá de esto el hueco no es el retraso de Polygon sino un cierre (noche,
+ * fin de semana): rellenarlo metería cientos de ranuras vacías en el eje.
+ */
+const MAX_GAP_SECONDS = 2 * 3600;
+
+export type TrailSlot = { time: number; value: number } | { time: number };
+
+/**
+ * Los puntos del rastro más las ranuras vacías que los separan de la última vela.
+ *
+ * lightweight-charts coloca por índice, no por tiempo: un punto 15 min después
+ * de la última vela aparecería pegado a ella. Una ranura vacía por barra (dato
+ * sin `value`, que la librería acepta como whitespace) reserva el hueco real,
+ * así que el retraso de Polygon se ve como lo que es.
+ */
+export function trailSlots(points: { time: number; value: number }[], lastCandleTime: number, timeframe: string): TrailSlot[] {
+  const step = BAR_SECONDS[timeframe];
+  if (!step || points.length === 0) return points;
+
+  const slots: TrailSlot[] = [];
+  let previous = lastCandleTime;
+
+  for (const point of points) {
+    const gap = point.time - previous;
+    if (previous >= lastCandleTime && gap > step && gap <= MAX_GAP_SECONDS) {
+      for (let time = previous + step; time < point.time; time += step) slots.push({ time });
+    }
+    slots.push(point);
+    previous = Math.max(previous, point.time);
+  }
+
+  return slots;
+}

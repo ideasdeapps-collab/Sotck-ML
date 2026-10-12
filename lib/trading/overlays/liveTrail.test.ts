@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appendQuote, barStart, liveLegend, trailPoints, type LiveQuote } from './liveTrail';
+import { appendQuote, barStart, liveLegend, trailPoints, trailSlots, type LiveQuote } from './liveTrail';
 import { dailyDateToEpoch } from '../chartTime';
 
 const quote = (time: number, price: number): LiveQuote => ({ time, price, source: 'yahoo' });
@@ -66,5 +66,38 @@ describe('liveLegend', () => {
 
   it('sin vela de referencia omite el desvío', () => {
     expect(liveLegend(quote(T, 50), null)).not.toContain('vs última vela');
+  });
+});
+
+describe('trailSlots', () => {
+  const lastCandle = barStart(T, '1m') - 15 * 60;
+
+  it('rellena con ranuras vacías el hueco entre la última vela y el precio web', () => {
+    const slots = trailSlots([{ time: barStart(T, '1m'), value: 101 }], lastCandle, '1m');
+    expect(slots).toHaveLength(15);
+    expect(slots[0]).toEqual({ time: lastCandle + 60 });
+    expect(slots[13]).toEqual({ time: lastCandle + 14 * 60 });
+    expect(slots[14]).toEqual({ time: barStart(T, '1m'), value: 101 });
+  });
+
+  it('también rellena los huecos entre puntos del rastro', () => {
+    const start = lastCandle + 60;
+    const slots = trailSlots([{ time: start, value: 1 }, { time: start + 180, value: 2 }], lastCandle, '1m');
+    expect(slots.map((slot) => ('value' in slot ? slot.value : null))).toEqual([1, null, null, 2]);
+  });
+
+  it('no rellena antes de la última vela: ahí las ranuras ya las ponen las velas', () => {
+    const slots = trailSlots([{ time: lastCandle - 120, value: 1 }], lastCandle, '1m');
+    expect(slots).toEqual([{ time: lastCandle - 120, value: 1 }]);
+  });
+
+  it('un hueco desmedido (fin de semana) no se rellena', () => {
+    const slots = trailSlots([{ time: lastCandle + 3 * 86400, value: 1 }], lastCandle, '1m');
+    expect(slots).toEqual([{ time: lastCandle + 3 * 86400, value: 1 }]);
+  });
+
+  it('en diario no hay nada que rellenar', () => {
+    const day = barStart(T, '1d');
+    expect(trailSlots([{ time: day, value: 1 }], day, '1d')).toEqual([{ time: day, value: 1 }]);
   });
 });
