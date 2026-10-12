@@ -76,7 +76,6 @@ const LAYER_IDS: Record<OverlayId, string[]> = {
   openingRange: ['or-box', 'or-breakout'],
   prevDay: ['pdl'],
   sessions: ['session-shading'],
-  livePrice: ['live-trail'],
   levels: ['sr-levels', 'breakouts'],
   zones: ['fvg', 'order-blocks', 'liquidity'],
   priceAction: ['price-action'],
@@ -109,8 +108,10 @@ export type PaintInput = {
   bias?: PlanBias;
   /** What the copilot has done on this ticker, for the `copilot` overlay. */
   copilot?: CopilotOverlay;
-  /** Precios web ya llevados a su barra, con las ranuras vacías del retraso, para `livePrice`. */
+  /** Precios web ya llevados a su barra, con las ranuras vacías del retraso. Siempre visibles, no es un overlay. */
   liveTrail?: TrailSlot[];
+  /** Último precio web, para la línea horizontal en tiempo real. */
+  livePrice?: number | null;
 };
 
 /**
@@ -246,6 +247,7 @@ export function paintOverlays({
   bias = 'auto',
   copilot,
   liveTrail = [],
+  livePrice = null,
 }: PaintInput): void {
   const snap = snapper(candles);
   const last = candles[candles.length - 1];
@@ -342,14 +344,22 @@ export function paintOverlays({
     );
   } else clear('sessions');
 
-  // Precio web: un punto por barra por delante de las velas retrasadas.
-  if (on('livePrice') && liveTrail.length > 0) {
+  // Precio web, siempre encendido: un punto por barra por delante de las velas
+  // retrasadas y una línea horizontal en el último precio leído.
+  if (liveTrail.length > 0) {
     layer.line(
       'live-trail',
       liveTrail.map((slot) => ({ ...slot, time: slot.time as Time })),
-      { color: COLORS.livePrice, pointsOnly: true, title: 'Web' }
+      { color: COLORS.livePrice, pointsOnly: true }
     );
-  } else clear('livePrice');
+  } else layer.remove('live-trail');
+
+  layer.priceLines(
+    'live-price',
+    livePrice !== null && Number.isFinite(livePrice)
+      ? [{ price: livePrice, color: COLORS.livePrice, title: 'Web', width: 1, dashed: true }]
+      : []
+  );
 
   // --- Structure (from /patterns) -----------------------------------------
   const patterns = remote.patterns?.ok ? remote.patterns.data : null;

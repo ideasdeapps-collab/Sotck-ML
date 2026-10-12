@@ -76,8 +76,8 @@ export default function ChartPanel() {
 
   const allowed = useCallback((id: OverlayId) => blocked[id] === null, [blocked]);
 
-  const liveOn = overlays.livePrice && allowed('livePrice');
-  const live = useLiveQuote(ticker, liveOn);
+  const live = useLiveQuote(ticker);
+  const livePrice = live.trail[live.trail.length - 1]?.price ?? null;
   const lastCandleTime = (candles[candles.length - 1] as Candle | undefined)?.time ?? null;
   const liveTrail = useMemo(
     () => (lastCandleTime === null ? [] : trailSlots(trailPoints(live.trail, timeframe), lastCandleTime, timeframe)),
@@ -301,8 +301,9 @@ export default function ChartPanel() {
       bias: planBias,
       copilot: copilotOverlay,
       liveTrail,
+      livePrice,
     });
-  }, [candles, overlays, remote, allowed, planBias, copilotOverlay, liveTrail]);
+  }, [candles, overlays, remote, allowed, planBias, copilotOverlay, liveTrail, livePrice]);
 
   /**
    * Resumen del oscilador de Elliott.
@@ -395,7 +396,7 @@ export default function ChartPanel() {
   /** Último precio web frente al cierre de la última vela de Polygon. */
   const liveLegendText = (() => {
     const latest = live.trail[live.trail.length - 1];
-    if (!liveOn || !latest) return '';
+    if (!latest) return '';
     return liveLegend(latest, (candles[candles.length - 1] as Candle | undefined)?.close ?? null);
   })();
 
@@ -403,7 +404,6 @@ export default function ChartPanel() {
   const overlayErrors = Object.entries(remote)
     .filter(([, result]) => result && !result.ok)
     .map(([key, result]) => `${key}: ${(result as { reason: string }).reason}`);
-  if (liveOn && live.error) overlayErrors.push(`precio web: ${live.error}`);
 
   return (
     <section className="chart-panel">
@@ -438,6 +438,7 @@ export default function ChartPanel() {
       {oneMinuteLegend && <p className="chart-panel__onemin">{oneMinuteLegend}</p>}
       {signalLegendText && <p className="chart-panel__onemin">{signalLegendText}</p>}
       {liveLegendText && <p className="chart-panel__onemin">{liveLegendText}</p>}
+      {live.error && <p className="chart-panel__error">Precio web sin datos — {live.error}</p>}
 
       {overlayErrors.length > 0 && (
         <p className="chart-panel__error">Overlays sin datos — {overlayErrors.join(' · ')}</p>

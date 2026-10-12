@@ -5,7 +5,7 @@ import { fetchJson } from './fetchJson';
 import { appendQuote, type LiveQuote } from './overlays/liveTrail';
 
 /**
- * Sondea `/api/market/live-quote` mientras el overlay `livePrice` está encendido.
+ * Sondea `/api/market/live-quote` para el ticker del gráfico (siempre, no es un overlay).
  *
  * Solo con la pestaña visible: una pestaña olvidada en segundo plano no tiene
  * por qué seguir llamando a Yahoo cada 15 s. El rastro vive en memoria por
@@ -18,12 +18,11 @@ const trails = new Map<string, LiveQuote[]>();
 
 export type LiveQuoteState = { trail: LiveQuote[]; error: string };
 
-export function useLiveQuote(ticker: string, enabled: boolean): LiveQuoteState {
+export function useLiveQuote(ticker: string): LiveQuoteState {
   const [state, setState] = useState<LiveQuoteState>({ trail: trails.get(ticker) ?? [], error: '' });
 
   useEffect(() => {
     setState({ trail: trails.get(ticker) ?? [], error: '' });
-    if (!enabled) return;
 
     let disposed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -68,7 +67,7 @@ export function useLiveQuote(ticker: string, enabled: boolean): LiveQuoteState {
       clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [ticker, enabled]);
+  }, [ticker]);
 
   return state;
 }
