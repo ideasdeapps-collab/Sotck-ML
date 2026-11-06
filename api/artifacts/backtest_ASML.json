@@ -1,857 +1,857 @@
 {
   "ticker": "ASML",
-  "generated_at": "2026-11-05T18:47:12.276903Z",
+  "generated_at": "2026-11-06T18:06:14.251823Z",
   "test_days": 120,
   "refit_every": 20,
   "metrics": {
-    "mae_logret": 0.0258,
-    "rmse_logret": 0.033696,
-    "mape_price": 0.0261,
-    "directional_accuracy": 0.6083,
-    "strategy_total_return": 0.1079,
-    "buyhold_total_return": -0.0557,
-    "strategy_sharpe": 0.481
+    "mae_logret": 0.025905,
+    "rmse_logret": 0.035547,
+    "mape_price": 0.0262,
+    "directional_accuracy": 0.5917,
+    "strategy_total_return": 0.0539,
+    "buyhold_total_return": -0.0967,
+    "strategy_sharpe": 0.24
   },
   "series": [
     {
-      "date": "2026-05-14",
-      "predicted": 1589.5222,
-      "actual": 1501.81,
-      "strategy_equity": 0.9478,
-      "buyhold_equity": 0.9478
-    },
-    {
       "date": "2026-05-15",
-      "predicted": 1545.77,
+      "predicted": 1536.7212,
       "actual": 1472.39,
-      "strategy_equity": 0.9292,
-      "buyhold_equity": 0.9292
+      "strategy_equity": 0.9804,
+      "buyhold_equity": 0.9804
     },
     {
       "date": "2026-05-18",
-      "predicted": 1500.2968,
+      "predicted": 1500.9293,
       "actual": 1459.44,
-      "strategy_equity": 0.9211,
-      "buyhold_equity": 0.9211
+      "strategy_equity": 0.9718,
+      "buyhold_equity": 0.9718
     },
     {
       "date": "2026-05-19",
-      "predicted": 1462.3957,
+      "predicted": 1461.3884,
       "actual": 1550.13,
-      "strategy_equity": 0.9783,
-      "buyhold_equity": 0.9783
-    },
-    {
-      "date": "2026-05-20",
-      "predicted": 1555.7611,
-      "actual": 1592.0,
-      "strategy_equity": 1.0047,
-      "buyhold_equity": 1.0047
-    },
-    {
-      "date": "2026-05-21",
-      "predicted": 1597.9781,
-      "actual": 1632.9,
-      "strategy_equity": 1.0305,
-      "buyhold_equity": 1.0305
-    },
-    {
-      "date": "2026-05-22",
-      "predicted": 1620.1535,
-      "actual": 1632.03,
-      "strategy_equity": 1.0305,
-      "buyhold_equity": 1.03
-    },
-    {
-      "date": "2026-05-26",
-      "predicted": 1636.4288,
-      "actual": 1597.87,
-      "strategy_equity": 1.009,
-      "buyhold_equity": 1.0084
-    },
-    {
-      "date": "2026-05-27",
-      "predicted": 1611.0501,
-      "actual": 1605.77,
-      "strategy_equity": 1.014,
-      "buyhold_equity": 1.0134
-    },
-    {
-      "date": "2026-05-28",
-      "predicted": 1594.6609,
-      "actual": 1612.76,
-      "strategy_equity": 1.014,
-      "buyhold_equity": 1.0178
-    },
-    {
-      "date": "2026-05-29",
-      "predicted": 1608.8989,
-      "actual": 1628.57,
-      "strategy_equity": 1.014,
-      "buyhold_equity": 1.0278
-    },
-    {
-      "date": "2026-06-01",
-      "predicted": 1639.8388,
-      "actual": 1705.37,
-      "strategy_equity": 1.0618,
-      "buyhold_equity": 1.0763
-    },
-    {
-      "date": "2026-06-02",
-      "predicted": 1716.6441,
-      "actual": 1726.36,
-      "strategy_equity": 1.0748,
-      "buyhold_equity": 1.0895
-    },
-    {
-      "date": "2026-06-03",
-      "predicted": 1725.155,
-      "actual": 1757.47,
-      "strategy_equity": 1.0748,
-      "buyhold_equity": 1.1092
-    },
-    {
-      "date": "2026-06-04",
-      "predicted": 1762.5963,
-      "actual": 1641.74,
-      "strategy_equity": 1.0041,
-      "buyhold_equity": 1.0361
-    },
-    {
-      "date": "2026-06-05",
-      "predicted": 1663.8998,
-      "actual": 1749.04,
-      "strategy_equity": 1.0697,
-      "buyhold_equity": 1.1038
-    },
-    {
-      "date": "2026-06-08",
-      "predicted": 1760.7179,
-      "actual": 1777.77,
-      "strategy_equity": 1.0873,
-      "buyhold_equity": 1.122
-    },
-    {
-      "date": "2026-06-09",
-      "predicted": 1769.9863,
-      "actual": 1734.19,
-      "strategy_equity": 1.0873,
-      "buyhold_equity": 1.0945
-    },
-    {
-      "date": "2026-06-10",
-      "predicted": 1752.644,
-      "actual": 1899.48,
-      "strategy_equity": 1.1909,
-      "buyhold_equity": 1.1988
-    },
-    {
-      "date": "2026-06-11",
-      "predicted": 1912.9673,
-      "actual": 1863.55,
-      "strategy_equity": 1.1684,
-      "buyhold_equity": 1.1761
-    },
-    {
-      "date": "2026-06-12",
-      "predicted": 1877.6824,
-      "actual": 1892.66,
-      "strategy_equity": 1.1866,
-      "buyhold_equity": 1.1945
-    },
-    {
-      "date": "2026-06-15",
-      "predicted": 1880.6642,
-      "actual": 1803.89,
-      "strategy_equity": 1.1866,
-      "buyhold_equity": 1.1385
-    },
-    {
-      "date": "2026-06-16",
-      "predicted": 1823.1267,
-      "actual": 1867.83,
-      "strategy_equity": 1.2287,
-      "buyhold_equity": 1.1788
-    },
-    {
-      "date": "2026-06-17",
-      "predicted": 1858.9245,
-      "actual": 1929.68,
-      "strategy_equity": 1.2287,
-      "buyhold_equity": 1.2178
-    },
-    {
-      "date": "2026-06-18",
-      "predicted": 1896.5329,
-      "actual": 1929.25,
-      "strategy_equity": 1.2287,
-      "buyhold_equity": 1.2176
-    },
-    {
-      "date": "2026-06-22",
-      "predicted": 1933.439,
-      "actual": 1778.46,
-      "strategy_equity": 1.1326,
-      "buyhold_equity": 1.1224
-    },
-    {
-      "date": "2026-06-23",
-      "predicted": 1797.491,
-      "actual": 1762.77,
-      "strategy_equity": 1.1226,
-      "buyhold_equity": 1.1125
-    },
-    {
-      "date": "2026-06-24",
-      "predicted": 1781.936,
-      "actual": 1841.18,
-      "strategy_equity": 1.1726,
-      "buyhold_equity": 1.162
-    },
-    {
-      "date": "2026-06-25",
-      "predicted": 1861.0008,
-      "actual": 1794.62,
-      "strategy_equity": 1.1429,
-      "buyhold_equity": 1.1326
-    },
-    {
-      "date": "2026-06-26",
-      "predicted": 1859.7013,
-      "actual": 1883.11,
-      "strategy_equity": 1.1993,
-      "buyhold_equity": 1.1884
-    },
-    {
-      "date": "2026-06-29",
-      "predicted": 1883.9073,
-      "actual": 1989.44,
-      "strategy_equity": 1.267,
-      "buyhold_equity": 1.2556
-    },
-    {
-      "date": "2026-06-30",
-      "predicted": 1982.1946,
-      "actual": 1843.04,
-      "strategy_equity": 1.267,
-      "buyhold_equity": 1.1632
-    },
-    {
-      "date": "2026-07-01",
-      "predicted": 1869.7853,
-      "actual": 1769.32,
-      "strategy_equity": 1.2163,
-      "buyhold_equity": 1.1166
-    },
-    {
-      "date": "2026-07-02",
-      "predicted": 1789.474,
-      "actual": 1825.07,
-      "strategy_equity": 1.2547,
-      "buyhold_equity": 1.1518
-    },
-    {
-      "date": "2026-07-06",
-      "predicted": 1870.1208,
-      "actual": 1747.28,
-      "strategy_equity": 1.2012,
-      "buyhold_equity": 1.1027
-    },
-    {
-      "date": "2026-07-07",
-      "predicted": 1749.3958,
-      "actual": 1768.65,
-      "strategy_equity": 1.2159,
-      "buyhold_equity": 1.1162
-    },
-    {
-      "date": "2026-07-08",
-      "predicted": 1786.0732,
-      "actual": 1804.25,
-      "strategy_equity": 1.2403,
-      "buyhold_equity": 1.1387
-    },
-    {
-      "date": "2026-07-09",
-      "predicted": 1823.9983,
-      "actual": 1797.32,
-      "strategy_equity": 1.2356,
-      "buyhold_equity": 1.1343
-    },
-    {
-      "date": "2026-07-10",
-      "predicted": 1807.9371,
-      "actual": 1726.04,
-      "strategy_equity": 1.1866,
-      "buyhold_equity": 1.0893
-    },
-    {
-      "date": "2026-07-13",
-      "predicted": 1735.5692,
-      "actual": 1775.64,
-      "strategy_equity": 1.2207,
-      "buyhold_equity": 1.1206
-    },
-    {
-      "date": "2026-07-14",
-      "predicted": 1776.5419,
-      "actual": 1815.27,
-      "strategy_equity": 1.2479,
-      "buyhold_equity": 1.1456
-    },
-    {
-      "date": "2026-07-15",
-      "predicted": 1811.7432,
-      "actual": 1784.87,
-      "strategy_equity": 1.2479,
-      "buyhold_equity": 1.1264
-    },
-    {
-      "date": "2026-07-16",
-      "predicted": 1783.3429,
-      "actual": 1747.58,
-      "strategy_equity": 1.2479,
-      "buyhold_equity": 1.1029
-    },
-    {
-      "date": "2026-07-17",
-      "predicted": 1782.5985,
-      "actual": 1739.02,
-      "strategy_equity": 1.2418,
-      "buyhold_equity": 1.0975
-    },
-    {
-      "date": "2026-07-20",
-      "predicted": 1775.7006,
-      "actual": 1801.51,
-      "strategy_equity": 1.2864,
-      "buyhold_equity": 1.137
-    },
-    {
-      "date": "2026-07-21",
-      "predicted": 1840.0699,
-      "actual": 1801.86,
-      "strategy_equity": 1.2867,
-      "buyhold_equity": 1.1372
-    },
-    {
-      "date": "2026-07-22",
-      "predicted": 1817.2518,
-      "actual": 1803.0,
-      "strategy_equity": 1.2875,
-      "buyhold_equity": 1.1379
-    },
-    {
-      "date": "2026-07-23",
-      "predicted": 1825.6057,
-      "actual": 1757.09,
-      "strategy_equity": 1.2547,
-      "buyhold_equity": 1.1089
-    },
-    {
-      "date": "2026-07-24",
-      "predicted": 1763.0664,
-      "actual": 1655.26,
-      "strategy_equity": 1.182,
-      "buyhold_equity": 1.0447
-    },
-    {
-      "date": "2026-07-27",
-      "predicted": 1690.3657,
-      "actual": 1582.95,
-      "strategy_equity": 1.1304,
-      "buyhold_equity": 0.999
-    },
-    {
-      "date": "2026-07-28",
-      "predicted": 1648.1682,
-      "actual": 1550.69,
-      "strategy_equity": 1.1073,
-      "buyhold_equity": 0.9787
-    },
-    {
-      "date": "2026-07-29",
-      "predicted": 1632.369,
-      "actual": 1651.44,
-      "strategy_equity": 1.1793,
-      "buyhold_equity": 1.0422
-    },
-    {
-      "date": "2026-07-30",
-      "predicted": 1719.6109,
-      "actual": 1629.0,
-      "strategy_equity": 1.1632,
-      "buyhold_equity": 1.0281
-    },
-    {
-      "date": "2026-07-31",
-      "predicted": 1640.0132,
-      "actual": 1642.52,
-      "strategy_equity": 1.1729,
-      "buyhold_equity": 1.0366
-    },
-    {
-      "date": "2026-08-03",
-      "predicted": 1683.4951,
-      "actual": 1711.89,
-      "strategy_equity": 1.2224,
-      "buyhold_equity": 1.0804
-    },
-    {
-      "date": "2026-08-04",
-      "predicted": 1747.3275,
-      "actual": 1678.22,
-      "strategy_equity": 1.1984,
-      "buyhold_equity": 1.0591
-    },
-    {
-      "date": "2026-08-05",
-      "predicted": 1680.3946,
-      "actual": 1704.37,
-      "strategy_equity": 1.2171,
-      "buyhold_equity": 1.0756
-    },
-    {
-      "date": "2026-08-06",
-      "predicted": 1708.2208,
-      "actual": 1740.99,
-      "strategy_equity": 1.2432,
-      "buyhold_equity": 1.0988
-    },
-    {
-      "date": "2026-08-07",
-      "predicted": 1754.0836,
-      "actual": 1733.48,
-      "strategy_equity": 1.2378,
-      "buyhold_equity": 1.094
-    },
-    {
-      "date": "2026-08-10",
-      "predicted": 1722.5344,
-      "actual": 1799.38,
-      "strategy_equity": 1.2378,
-      "buyhold_equity": 1.1356
-    },
-    {
-      "date": "2026-08-11",
-      "predicted": 1830.3206,
-      "actual": 1810.07,
-      "strategy_equity": 1.2452,
-      "buyhold_equity": 1.1424
-    },
-    {
-      "date": "2026-08-12",
-      "predicted": 1808.3999,
-      "actual": 1847.9,
-      "strategy_equity": 1.2452,
-      "buyhold_equity": 1.1662
-    },
-    {
-      "date": "2026-08-13",
-      "predicted": 1847.5996,
-      "actual": 1844.08,
-      "strategy_equity": 1.2452,
-      "buyhold_equity": 1.1638
-    },
-    {
-      "date": "2026-08-14",
-      "predicted": 1836.8951,
-      "actual": 1883.12,
-      "strategy_equity": 1.2452,
-      "buyhold_equity": 1.1885
-    },
-    {
-      "date": "2026-08-17",
-      "predicted": 1872.7097,
-      "actual": 1802.98,
-      "strategy_equity": 1.2452,
-      "buyhold_equity": 1.1379
-    },
-    {
-      "date": "2026-08-18",
-      "predicted": 1809.449,
-      "actual": 1751.73,
-      "strategy_equity": 1.2098,
-      "buyhold_equity": 1.1055
-    },
-    {
-      "date": "2026-08-19",
-      "predicted": 1768.5095,
-      "actual": 1750.31,
-      "strategy_equity": 1.2088,
-      "buyhold_equity": 1.1046
-    },
-    {
-      "date": "2026-08-20",
-      "predicted": 1750.7543,
-      "actual": 1763.76,
-      "strategy_equity": 1.2181,
-      "buyhold_equity": 1.1131
-    },
-    {
-      "date": "2026-08-21",
-      "predicted": 1784.6125,
-      "actual": 1740.13,
-      "strategy_equity": 1.2018,
-      "buyhold_equity": 1.0982
-    },
-    {
-      "date": "2026-08-24",
-      "predicted": 1744.4653,
-      "actual": 1744.16,
-      "strategy_equity": 1.2046,
-      "buyhold_equity": 1.1008
-    },
-    {
-      "date": "2026-08-25",
-      "predicted": 1751.7632,
-      "actual": 1745.64,
-      "strategy_equity": 1.2056,
-      "buyhold_equity": 1.1017
-    },
-    {
-      "date": "2026-08-26",
-      "predicted": 1743.5821,
-      "actual": 1735.01,
-      "strategy_equity": 1.2056,
-      "buyhold_equity": 1.095
-    },
-    {
-      "date": "2026-08-27",
-      "predicted": 1730.9143,
-      "actual": 1696.16,
-      "strategy_equity": 1.2056,
-      "buyhold_equity": 1.0705
-    },
-    {
-      "date": "2026-08-28",
-      "predicted": 1672.914,
-      "actual": 1696.01,
-      "strategy_equity": 1.2056,
-      "buyhold_equity": 1.0704
-    },
-    {
-      "date": "2026-08-31",
-      "predicted": 1705.1506,
-      "actual": 1665.14,
-      "strategy_equity": 1.1837,
-      "buyhold_equity": 1.0509
-    },
-    {
-      "date": "2026-09-01",
-      "predicted": 1667.9171,
-      "actual": 1682.3,
-      "strategy_equity": 1.1959,
-      "buyhold_equity": 1.0617
-    },
-    {
-      "date": "2026-09-02",
-      "predicted": 1663.7153,
-      "actual": 1646.19,
-      "strategy_equity": 1.1959,
-      "buyhold_equity": 1.0389
-    },
-    {
-      "date": "2026-09-03",
-      "predicted": 1646.9509,
-      "actual": 1714.88,
-      "strategy_equity": 1.2458,
-      "buyhold_equity": 1.0823
-    },
-    {
-      "date": "2026-09-04",
-      "predicted": 1675.2515,
-      "actual": 1764.85,
-      "strategy_equity": 1.2458,
-      "buyhold_equity": 1.1138
-    },
-    {
-      "date": "2026-09-08",
-      "predicted": 1764.602,
-      "actual": 1729.52,
-      "strategy_equity": 1.2458,
-      "buyhold_equity": 1.0915
-    },
-    {
-      "date": "2026-09-09",
-      "predicted": 1708.8477,
-      "actual": 1687.43,
-      "strategy_equity": 1.2458,
-      "buyhold_equity": 1.065
-    },
-    {
-      "date": "2026-09-10",
-      "predicted": 1670.2065,
-      "actual": 1698.3,
-      "strategy_equity": 1.2458,
-      "buyhold_equity": 1.0718
-    },
-    {
-      "date": "2026-09-11",
-      "predicted": 1698.8358,
-      "actual": 1575.15,
-      "strategy_equity": 1.1554,
-      "buyhold_equity": 0.9941
-    },
-    {
-      "date": "2026-09-14",
-      "predicted": 1595.7027,
-      "actual": 1591.48,
-      "strategy_equity": 1.1674,
-      "buyhold_equity": 1.0044
-    },
-    {
-      "date": "2026-09-15",
-      "predicted": 1653.8971,
-      "actual": 1602.22,
-      "strategy_equity": 1.1753,
-      "buyhold_equity": 1.0112
-    },
-    {
-      "date": "2026-09-16",
-      "predicted": 1640.734,
-      "actual": 1629.67,
-      "strategy_equity": 1.1954,
-      "buyhold_equity": 1.0285
-    },
-    {
-      "date": "2026-09-17",
-      "predicted": 1689.8126,
-      "actual": 1679.92,
-      "strategy_equity": 1.2323,
-      "buyhold_equity": 1.0602
-    },
-    {
-      "date": "2026-09-18",
-      "predicted": 1698.5729,
-      "actual": 1711.32,
-      "strategy_equity": 1.2553,
-      "buyhold_equity": 1.08
-    },
-    {
-      "date": "2026-09-21",
-      "predicted": 1713.7491,
-      "actual": 1747.9,
-      "strategy_equity": 1.2821,
-      "buyhold_equity": 1.1031
-    },
-    {
-      "date": "2026-09-22",
-      "predicted": 1746.5367,
-      "actual": 1744.61,
-      "strategy_equity": 1.2821,
-      "buyhold_equity": 1.101
-    },
-    {
-      "date": "2026-09-23",
-      "predicted": 1758.6903,
-      "actual": 1722.5,
-      "strategy_equity": 1.2659,
-      "buyhold_equity": 1.0871
-    },
-    {
-      "date": "2026-09-24",
-      "predicted": 1738.9851,
-      "actual": 1743.94,
-      "strategy_equity": 1.2816,
-      "buyhold_equity": 1.1006
-    },
-    {
-      "date": "2026-09-25",
-      "predicted": 1740.1356,
-      "actual": 1771.41,
-      "strategy_equity": 1.2816,
-      "buyhold_equity": 1.118
-    },
-    {
-      "date": "2026-09-28",
-      "predicted": 1750.3384,
-      "actual": 1834.39,
-      "strategy_equity": 1.2816,
-      "buyhold_equity": 1.1577
-    },
-    {
-      "date": "2026-09-29",
-      "predicted": 1818.1963,
-      "actual": 1811.67,
-      "strategy_equity": 1.2816,
-      "buyhold_equity": 1.1434
-    },
-    {
-      "date": "2026-09-30",
-      "predicted": 1790.5901,
-      "actual": 1808.49,
-      "strategy_equity": 1.2816,
-      "buyhold_equity": 1.1414
-    },
-    {
-      "date": "2026-10-01",
-      "predicted": 1788.4019,
-      "actual": 1867.31,
-      "strategy_equity": 1.2816,
-      "buyhold_equity": 1.1785
-    },
-    {
-      "date": "2026-10-02",
-      "predicted": 1841.3525,
-      "actual": 1859.86,
-      "strategy_equity": 1.2816,
-      "buyhold_equity": 1.1738
-    },
-    {
-      "date": "2026-10-05",
-      "predicted": 1841.5082,
-      "actual": 1834.1,
-      "strategy_equity": 1.2816,
-      "buyhold_equity": 1.1575
-    },
-    {
-      "date": "2026-10-06",
-      "predicted": 1829.4748,
-      "actual": 1804.96,
-      "strategy_equity": 1.2816,
-      "buyhold_equity": 1.1391
-    },
-    {
-      "date": "2026-10-07",
-      "predicted": 1791.7316,
-      "actual": 1769.79,
-      "strategy_equity": 1.2816,
-      "buyhold_equity": 1.1169
-    },
-    {
-      "date": "2026-10-08",
-      "predicted": 1773.0264,
-      "actual": 1780.34,
-      "strategy_equity": 1.2893,
-      "buyhold_equity": 1.1236
-    },
-    {
-      "date": "2026-10-09",
-      "predicted": 1762.0145,
-      "actual": 1750.24,
-      "strategy_equity": 1.2893,
-      "buyhold_equity": 1.1046
-    },
-    {
-      "date": "2026-10-12",
-      "predicted": 1759.0324,
-      "actual": 1717.76,
-      "strategy_equity": 1.2654,
-      "buyhold_equity": 1.0841
-    },
-    {
-      "date": "2026-10-13",
-      "predicted": 1720.6687,
-      "actual": 1650.0,
-      "strategy_equity": 1.2154,
-      "buyhold_equity": 1.0413
-    },
-    {
-      "date": "2026-10-14",
-      "predicted": 1638.5743,
-      "actual": 1657.44,
-      "strategy_equity": 1.2154,
-      "buyhold_equity": 1.046
-    },
-    {
-      "date": "2026-10-15",
-      "predicted": 1645.285,
-      "actual": 1641.52,
-      "strategy_equity": 1.2154,
-      "buyhold_equity": 1.036
-    },
-    {
-      "date": "2026-10-16",
-      "predicted": 1656.8408,
-      "actual": 1647.12,
-      "strategy_equity": 1.2196,
-      "buyhold_equity": 1.0395
-    },
-    {
-      "date": "2026-10-19",
-      "predicted": 1664.6729,
-      "actual": 1630.84,
-      "strategy_equity": 1.2075,
-      "buyhold_equity": 1.0292
-    },
-    {
-      "date": "2026-10-20",
-      "predicted": 1653.884,
-      "actual": 1676.69,
-      "strategy_equity": 1.2415,
-      "buyhold_equity": 1.0582
-    },
-    {
-      "date": "2026-10-21",
-      "predicted": 1696.382,
-      "actual": 1560.54,
-      "strategy_equity": 1.1555,
-      "buyhold_equity": 0.9849
-    },
-    {
-      "date": "2026-10-22",
-      "predicted": 1595.6372,
-      "actual": 1571.8,
-      "strategy_equity": 1.1638,
-      "buyhold_equity": 0.992
-    },
-    {
-      "date": "2026-10-23",
-      "predicted": 1615.1918,
-      "actual": 1590.9,
-      "strategy_equity": 1.178,
-      "buyhold_equity": 1.004
-    },
-    {
-      "date": "2026-10-26",
-      "predicted": 1633.1263,
-      "actual": 1635.57,
-      "strategy_equity": 1.211,
+      "strategy_equity": 1.0322,
       "buyhold_equity": 1.0322
     },
     {
+      "date": "2026-05-20",
+      "predicted": 1557.1325,
+      "actual": 1592.0,
+      "strategy_equity": 1.0601,
+      "buyhold_equity": 1.0601
+    },
+    {
+      "date": "2026-05-21",
+      "predicted": 1581.7831,
+      "actual": 1632.9,
+      "strategy_equity": 1.0601,
+      "buyhold_equity": 1.0873
+    },
+    {
+      "date": "2026-05-22",
+      "predicted": 1621.9383,
+      "actual": 1632.03,
+      "strategy_equity": 1.0601,
+      "buyhold_equity": 1.0867
+    },
+    {
+      "date": "2026-05-26",
+      "predicted": 1620.5153,
+      "actual": 1597.87,
+      "strategy_equity": 1.0601,
+      "buyhold_equity": 1.064
+    },
+    {
+      "date": "2026-05-27",
+      "predicted": 1602.5556,
+      "actual": 1605.77,
+      "strategy_equity": 1.0653,
+      "buyhold_equity": 1.0692
+    },
+    {
+      "date": "2026-05-28",
+      "predicted": 1596.74,
+      "actual": 1612.76,
+      "strategy_equity": 1.0653,
+      "buyhold_equity": 1.0739
+    },
+    {
+      "date": "2026-05-29",
+      "predicted": 1608.2205,
+      "actual": 1628.57,
+      "strategy_equity": 1.0653,
+      "buyhold_equity": 1.0844
+    },
+    {
+      "date": "2026-06-01",
+      "predicted": 1635.2541,
+      "actual": 1705.37,
+      "strategy_equity": 1.1155,
+      "buyhold_equity": 1.1355
+    },
+    {
+      "date": "2026-06-02",
+      "predicted": 1726.4658,
+      "actual": 1726.36,
+      "strategy_equity": 1.1293,
+      "buyhold_equity": 1.1495
+    },
+    {
+      "date": "2026-06-03",
+      "predicted": 1728.1929,
+      "actual": 1757.47,
+      "strategy_equity": 1.1496,
+      "buyhold_equity": 1.1702
+    },
+    {
+      "date": "2026-06-04",
+      "predicted": 1772.1731,
+      "actual": 1641.74,
+      "strategy_equity": 1.0739,
+      "buyhold_equity": 1.0932
+    },
+    {
+      "date": "2026-06-05",
+      "predicted": 1653.3625,
+      "actual": 1749.04,
+      "strategy_equity": 1.1441,
+      "buyhold_equity": 1.1646
+    },
+    {
+      "date": "2026-06-08",
+      "predicted": 1750.965,
+      "actual": 1777.77,
+      "strategy_equity": 1.1629,
+      "buyhold_equity": 1.1838
+    },
+    {
+      "date": "2026-06-09",
+      "predicted": 1767.6012,
+      "actual": 1734.19,
+      "strategy_equity": 1.1629,
+      "buyhold_equity": 1.1547
+    },
+    {
+      "date": "2026-06-10",
+      "predicted": 1750.7187,
+      "actual": 1899.48,
+      "strategy_equity": 1.2737,
+      "buyhold_equity": 1.2648
+    },
+    {
+      "date": "2026-06-11",
+      "predicted": 1920.9883,
+      "actual": 1863.55,
+      "strategy_equity": 1.2496,
+      "buyhold_equity": 1.2409
+    },
+    {
+      "date": "2026-06-12",
+      "predicted": 1888.5962,
+      "actual": 1892.66,
+      "strategy_equity": 1.2692,
+      "buyhold_equity": 1.2603
+    },
+    {
+      "date": "2026-06-15",
+      "predicted": 1882.5229,
+      "actual": 1803.89,
+      "strategy_equity": 1.2692,
+      "buyhold_equity": 1.2011
+    },
+    {
+      "date": "2026-06-16",
+      "predicted": 1823.829,
+      "actual": 1867.83,
+      "strategy_equity": 1.3141,
+      "buyhold_equity": 1.2437
+    },
+    {
+      "date": "2026-06-17",
+      "predicted": 1866.0623,
+      "actual": 1929.68,
+      "strategy_equity": 1.3141,
+      "buyhold_equity": 1.2849
+    },
+    {
+      "date": "2026-06-18",
+      "predicted": 1899.0813,
+      "actual": 1929.25,
+      "strategy_equity": 1.3141,
+      "buyhold_equity": 1.2846
+    },
+    {
+      "date": "2026-06-22",
+      "predicted": 1929.5622,
+      "actual": 1778.46,
+      "strategy_equity": 1.2114,
+      "buyhold_equity": 1.1842
+    },
+    {
+      "date": "2026-06-23",
+      "predicted": 1784.8524,
+      "actual": 1762.77,
+      "strategy_equity": 1.2007,
+      "buyhold_equity": 1.1738
+    },
+    {
+      "date": "2026-06-24",
+      "predicted": 1779.6916,
+      "actual": 1841.18,
+      "strategy_equity": 1.2542,
+      "buyhold_equity": 1.226
+    },
+    {
+      "date": "2026-06-25",
+      "predicted": 1857.1987,
+      "actual": 1794.62,
+      "strategy_equity": 1.2224,
+      "buyhold_equity": 1.195
+    },
+    {
+      "date": "2026-06-26",
+      "predicted": 1874.0841,
+      "actual": 1883.11,
+      "strategy_equity": 1.2827,
+      "buyhold_equity": 1.2539
+    },
+    {
+      "date": "2026-06-29",
+      "predicted": 1885.2475,
+      "actual": 1989.44,
+      "strategy_equity": 1.3551,
+      "buyhold_equity": 1.3247
+    },
+    {
+      "date": "2026-06-30",
+      "predicted": 1990.3382,
+      "actual": 1843.04,
+      "strategy_equity": 1.2554,
+      "buyhold_equity": 1.2272
+    },
+    {
+      "date": "2026-07-01",
+      "predicted": 1869.4286,
+      "actual": 1769.32,
+      "strategy_equity": 1.2052,
+      "buyhold_equity": 1.1781
+    },
+    {
+      "date": "2026-07-02",
+      "predicted": 1786.6199,
+      "actual": 1825.07,
+      "strategy_equity": 1.2432,
+      "buyhold_equity": 1.2152
+    },
+    {
+      "date": "2026-07-06",
+      "predicted": 1863.9967,
+      "actual": 1747.28,
+      "strategy_equity": 1.1902,
+      "buyhold_equity": 1.1634
+    },
+    {
+      "date": "2026-07-07",
+      "predicted": 1769.3999,
+      "actual": 1768.65,
+      "strategy_equity": 1.2047,
+      "buyhold_equity": 1.1777
+    },
+    {
+      "date": "2026-07-08",
+      "predicted": 1790.6017,
+      "actual": 1804.25,
+      "strategy_equity": 1.229,
+      "buyhold_equity": 1.2014
+    },
+    {
+      "date": "2026-07-09",
+      "predicted": 1837.7016,
+      "actual": 1797.32,
+      "strategy_equity": 1.2243,
+      "buyhold_equity": 1.1968
+    },
+    {
+      "date": "2026-07-10",
+      "predicted": 1812.5544,
+      "actual": 1726.04,
+      "strategy_equity": 1.1757,
+      "buyhold_equity": 1.1493
+    },
+    {
+      "date": "2026-07-13",
+      "predicted": 1742.1814,
+      "actual": 1775.64,
+      "strategy_equity": 1.2095,
+      "buyhold_equity": 1.1823
+    },
+    {
+      "date": "2026-07-14",
+      "predicted": 1778.0791,
+      "actual": 1815.27,
+      "strategy_equity": 1.2365,
+      "buyhold_equity": 1.2087
+    },
+    {
+      "date": "2026-07-15",
+      "predicted": 1798.6898,
+      "actual": 1784.87,
+      "strategy_equity": 1.2365,
+      "buyhold_equity": 1.1885
+    },
+    {
+      "date": "2026-07-16",
+      "predicted": 1784.008,
+      "actual": 1747.58,
+      "strategy_equity": 1.2365,
+      "buyhold_equity": 1.1636
+    },
+    {
+      "date": "2026-07-17",
+      "predicted": 1779.1387,
+      "actual": 1739.02,
+      "strategy_equity": 1.2304,
+      "buyhold_equity": 1.1579
+    },
+    {
+      "date": "2026-07-20",
+      "predicted": 1783.8633,
+      "actual": 1801.51,
+      "strategy_equity": 1.2747,
+      "buyhold_equity": 1.1996
+    },
+    {
+      "date": "2026-07-21",
+      "predicted": 1838.0638,
+      "actual": 1801.86,
+      "strategy_equity": 1.2749,
+      "buyhold_equity": 1.1998
+    },
+    {
+      "date": "2026-07-22",
+      "predicted": 1813.7944,
+      "actual": 1803.0,
+      "strategy_equity": 1.2757,
+      "buyhold_equity": 1.2006
+    },
+    {
+      "date": "2026-07-23",
+      "predicted": 1821.4592,
+      "actual": 1757.09,
+      "strategy_equity": 1.2432,
+      "buyhold_equity": 1.17
+    },
+    {
+      "date": "2026-07-24",
+      "predicted": 1764.0885,
+      "actual": 1655.26,
+      "strategy_equity": 1.1712,
+      "buyhold_equity": 1.1022
+    },
+    {
+      "date": "2026-07-27",
+      "predicted": 1691.8599,
+      "actual": 1582.95,
+      "strategy_equity": 1.12,
+      "buyhold_equity": 1.054
+    },
+    {
+      "date": "2026-07-28",
+      "predicted": 1649.5736,
+      "actual": 1550.69,
+      "strategy_equity": 1.0972,
+      "buyhold_equity": 1.0325
+    },
+    {
+      "date": "2026-07-29",
+      "predicted": 1628.217,
+      "actual": 1651.44,
+      "strategy_equity": 1.1685,
+      "buyhold_equity": 1.0996
+    },
+    {
+      "date": "2026-07-30",
+      "predicted": 1717.7421,
+      "actual": 1629.0,
+      "strategy_equity": 1.1526,
+      "buyhold_equity": 1.0847
+    },
+    {
+      "date": "2026-07-31",
+      "predicted": 1635.8217,
+      "actual": 1642.52,
+      "strategy_equity": 1.1622,
+      "buyhold_equity": 1.0937
+    },
+    {
+      "date": "2026-08-03",
+      "predicted": 1681.4703,
+      "actual": 1711.89,
+      "strategy_equity": 1.2113,
+      "buyhold_equity": 1.1399
+    },
+    {
+      "date": "2026-08-04",
+      "predicted": 1745.3939,
+      "actual": 1678.22,
+      "strategy_equity": 1.1874,
+      "buyhold_equity": 1.1175
+    },
+    {
+      "date": "2026-08-05",
+      "predicted": 1677.295,
+      "actual": 1704.37,
+      "strategy_equity": 1.1874,
+      "buyhold_equity": 1.1349
+    },
+    {
+      "date": "2026-08-06",
+      "predicted": 1716.0909,
+      "actual": 1740.99,
+      "strategy_equity": 1.2129,
+      "buyhold_equity": 1.1593
+    },
+    {
+      "date": "2026-08-07",
+      "predicted": 1745.0534,
+      "actual": 1733.48,
+      "strategy_equity": 1.2077,
+      "buyhold_equity": 1.1543
+    },
+    {
+      "date": "2026-08-10",
+      "predicted": 1729.9341,
+      "actual": 1799.38,
+      "strategy_equity": 1.2077,
+      "buyhold_equity": 1.1981
+    },
+    {
+      "date": "2026-08-11",
+      "predicted": 1821.6572,
+      "actual": 1810.07,
+      "strategy_equity": 1.2149,
+      "buyhold_equity": 1.2053
+    },
+    {
+      "date": "2026-08-12",
+      "predicted": 1794.8045,
+      "actual": 1847.9,
+      "strategy_equity": 1.2149,
+      "buyhold_equity": 1.2304
+    },
+    {
+      "date": "2026-08-13",
+      "predicted": 1847.6518,
+      "actual": 1844.08,
+      "strategy_equity": 1.2149,
+      "buyhold_equity": 1.2279
+    },
+    {
+      "date": "2026-08-14",
+      "predicted": 1850.0746,
+      "actual": 1883.12,
+      "strategy_equity": 1.2406,
+      "buyhold_equity": 1.2539
+    },
+    {
+      "date": "2026-08-17",
+      "predicted": 1879.9009,
+      "actual": 1802.98,
+      "strategy_equity": 1.2406,
+      "buyhold_equity": 1.2005
+    },
+    {
+      "date": "2026-08-18",
+      "predicted": 1802.3095,
+      "actual": 1751.73,
+      "strategy_equity": 1.2406,
+      "buyhold_equity": 1.1664
+    },
+    {
+      "date": "2026-08-19",
+      "predicted": 1763.9127,
+      "actual": 1750.31,
+      "strategy_equity": 1.2396,
+      "buyhold_equity": 1.1655
+    },
+    {
+      "date": "2026-08-20",
+      "predicted": 1735.2,
+      "actual": 1763.76,
+      "strategy_equity": 1.2396,
+      "buyhold_equity": 1.1744
+    },
+    {
+      "date": "2026-08-21",
+      "predicted": 1773.8898,
+      "actual": 1740.13,
+      "strategy_equity": 1.223,
+      "buyhold_equity": 1.1587
+    },
+    {
+      "date": "2026-08-24",
+      "predicted": 1743.0071,
+      "actual": 1744.16,
+      "strategy_equity": 1.2258,
+      "buyhold_equity": 1.1614
+    },
+    {
+      "date": "2026-08-25",
+      "predicted": 1748.8593,
+      "actual": 1745.64,
+      "strategy_equity": 1.2269,
+      "buyhold_equity": 1.1624
+    },
+    {
+      "date": "2026-08-26",
+      "predicted": 1738.6487,
+      "actual": 1735.01,
+      "strategy_equity": 1.2269,
+      "buyhold_equity": 1.1553
+    },
+    {
+      "date": "2026-08-27",
+      "predicted": 1726.4647,
+      "actual": 1696.16,
+      "strategy_equity": 1.2269,
+      "buyhold_equity": 1.1294
+    },
+    {
+      "date": "2026-08-28",
+      "predicted": 1674.5581,
+      "actual": 1696.01,
+      "strategy_equity": 1.2269,
+      "buyhold_equity": 1.1293
+    },
+    {
+      "date": "2026-08-31",
+      "predicted": 1716.0971,
+      "actual": 1665.14,
+      "strategy_equity": 1.2045,
+      "buyhold_equity": 1.1088
+    },
+    {
+      "date": "2026-09-01",
+      "predicted": 1669.6559,
+      "actual": 1682.3,
+      "strategy_equity": 1.2169,
+      "buyhold_equity": 1.1202
+    },
+    {
+      "date": "2026-09-02",
+      "predicted": 1662.3087,
+      "actual": 1646.19,
+      "strategy_equity": 1.2169,
+      "buyhold_equity": 1.0961
+    },
+    {
+      "date": "2026-09-03",
+      "predicted": 1655.5827,
+      "actual": 1714.88,
+      "strategy_equity": 1.2677,
+      "buyhold_equity": 1.1419
+    },
+    {
+      "date": "2026-09-04",
+      "predicted": 1683.1353,
+      "actual": 1764.85,
+      "strategy_equity": 1.2677,
+      "buyhold_equity": 1.1751
+    },
+    {
+      "date": "2026-09-08",
+      "predicted": 1773.6665,
+      "actual": 1729.52,
+      "strategy_equity": 1.2423,
+      "buyhold_equity": 1.1516
+    },
+    {
+      "date": "2026-09-09",
+      "predicted": 1707.0325,
+      "actual": 1687.43,
+      "strategy_equity": 1.2423,
+      "buyhold_equity": 1.1236
+    },
+    {
+      "date": "2026-09-10",
+      "predicted": 1678.4188,
+      "actual": 1698.3,
+      "strategy_equity": 1.2423,
+      "buyhold_equity": 1.1308
+    },
+    {
+      "date": "2026-09-11",
+      "predicted": 1697.2203,
+      "actual": 1575.15,
+      "strategy_equity": 1.2423,
+      "buyhold_equity": 1.0488
+    },
+    {
+      "date": "2026-09-14",
+      "predicted": 1585.6621,
+      "actual": 1591.48,
+      "strategy_equity": 1.2552,
+      "buyhold_equity": 1.0597
+    },
+    {
+      "date": "2026-09-15",
+      "predicted": 1649.8308,
+      "actual": 1602.22,
+      "strategy_equity": 1.2637,
+      "buyhold_equity": 1.0669
+    },
+    {
+      "date": "2026-09-16",
+      "predicted": 1651.3242,
+      "actual": 1629.67,
+      "strategy_equity": 1.2853,
+      "buyhold_equity": 1.0851
+    },
+    {
+      "date": "2026-09-17",
+      "predicted": 1702.1964,
+      "actual": 1679.92,
+      "strategy_equity": 1.325,
+      "buyhold_equity": 1.1186
+    },
+    {
+      "date": "2026-09-18",
+      "predicted": 1697.35,
+      "actual": 1711.32,
+      "strategy_equity": 1.3497,
+      "buyhold_equity": 1.1395
+    },
+    {
+      "date": "2026-09-21",
+      "predicted": 1705.3244,
+      "actual": 1747.9,
+      "strategy_equity": 1.3497,
+      "buyhold_equity": 1.1639
+    },
+    {
+      "date": "2026-09-22",
+      "predicted": 1742.0009,
+      "actual": 1744.61,
+      "strategy_equity": 1.3497,
+      "buyhold_equity": 1.1617
+    },
+    {
+      "date": "2026-09-23",
+      "predicted": 1750.3216,
+      "actual": 1722.5,
+      "strategy_equity": 1.3326,
+      "buyhold_equity": 1.1469
+    },
+    {
+      "date": "2026-09-24",
+      "predicted": 1735.4473,
+      "actual": 1743.94,
+      "strategy_equity": 1.3492,
+      "buyhold_equity": 1.1612
+    },
+    {
+      "date": "2026-09-25",
+      "predicted": 1730.0265,
+      "actual": 1771.41,
+      "strategy_equity": 1.3492,
+      "buyhold_equity": 1.1795
+    },
+    {
+      "date": "2026-09-28",
+      "predicted": 1754.1766,
+      "actual": 1834.39,
+      "strategy_equity": 1.3492,
+      "buyhold_equity": 1.2215
+    },
+    {
+      "date": "2026-09-29",
+      "predicted": 1806.0247,
+      "actual": 1811.67,
+      "strategy_equity": 1.3492,
+      "buyhold_equity": 1.2063
+    },
+    {
+      "date": "2026-09-30",
+      "predicted": 1800.7639,
+      "actual": 1808.49,
+      "strategy_equity": 1.3492,
+      "buyhold_equity": 1.2042
+    },
+    {
+      "date": "2026-10-01",
+      "predicted": 1791.1075,
+      "actual": 1867.31,
+      "strategy_equity": 1.3492,
+      "buyhold_equity": 1.2434
+    },
+    {
+      "date": "2026-10-02",
+      "predicted": 1836.7613,
+      "actual": 1859.86,
+      "strategy_equity": 1.3492,
+      "buyhold_equity": 1.2384
+    },
+    {
+      "date": "2026-10-05",
+      "predicted": 1844.8285,
+      "actual": 1834.1,
+      "strategy_equity": 1.3492,
+      "buyhold_equity": 1.2213
+    },
+    {
+      "date": "2026-10-06",
+      "predicted": 1832.0619,
+      "actual": 1804.96,
+      "strategy_equity": 1.3492,
+      "buyhold_equity": 1.2019
+    },
+    {
+      "date": "2026-10-07",
+      "predicted": 1791.4725,
+      "actual": 1769.79,
+      "strategy_equity": 1.3492,
+      "buyhold_equity": 1.1784
+    },
+    {
+      "date": "2026-10-08",
+      "predicted": 1779.0518,
+      "actual": 1780.34,
+      "strategy_equity": 1.3573,
+      "buyhold_equity": 1.1855
+    },
+    {
+      "date": "2026-10-09",
+      "predicted": 1762.9403,
+      "actual": 1750.24,
+      "strategy_equity": 1.3573,
+      "buyhold_equity": 1.1654
+    },
+    {
+      "date": "2026-10-12",
+      "predicted": 1759.419,
+      "actual": 1717.76,
+      "strategy_equity": 1.3321,
+      "buyhold_equity": 1.1438
+    },
+    {
+      "date": "2026-10-13",
+      "predicted": 1724.551,
+      "actual": 1650.0,
+      "strategy_equity": 1.2795,
+      "buyhold_equity": 1.0987
+    },
+    {
+      "date": "2026-10-14",
+      "predicted": 1644.7897,
+      "actual": 1657.44,
+      "strategy_equity": 1.2795,
+      "buyhold_equity": 1.1036
+    },
+    {
+      "date": "2026-10-15",
+      "predicted": 1647.3644,
+      "actual": 1641.52,
+      "strategy_equity": 1.2795,
+      "buyhold_equity": 1.093
+    },
+    {
+      "date": "2026-10-16",
+      "predicted": 1639.1766,
+      "actual": 1647.12,
+      "strategy_equity": 1.2795,
+      "buyhold_equity": 1.0968
+    },
+    {
+      "date": "2026-10-19",
+      "predicted": 1665.6502,
+      "actual": 1630.84,
+      "strategy_equity": 1.2669,
+      "buyhold_equity": 1.0859
+    },
+    {
+      "date": "2026-10-20",
+      "predicted": 1654.0709,
+      "actual": 1676.69,
+      "strategy_equity": 1.3025,
+      "buyhold_equity": 1.1164
+    },
+    {
+      "date": "2026-10-21",
+      "predicted": 1696.7369,
+      "actual": 1560.54,
+      "strategy_equity": 1.2123,
+      "buyhold_equity": 1.0391
+    },
+    {
+      "date": "2026-10-22",
+      "predicted": 1587.9269,
+      "actual": 1571.8,
+      "strategy_equity": 1.221,
+      "buyhold_equity": 1.0466
+    },
+    {
+      "date": "2026-10-23",
+      "predicted": 1607.8254,
+      "actual": 1590.9,
+      "strategy_equity": 1.2359,
+      "buyhold_equity": 1.0593
+    },
+    {
+      "date": "2026-10-26",
+      "predicted": 1639.4158,
+      "actual": 1635.57,
+      "strategy_equity": 1.2706,
+      "buyhold_equity": 1.0891
+    },
+    {
       "date": "2026-10-27",
-      "predicted": 1700.003,
+      "predicted": 1695.2363,
       "actual": 1662.85,
-      "strategy_equity": 1.2312,
-      "buyhold_equity": 1.0494
+      "strategy_equity": 1.2918,
+      "buyhold_equity": 1.1072
     },
     {
       "date": "2026-10-28",
-      "predicted": 1690.7727,
+      "predicted": 1693.8863,
       "actual": 1675.7,
-      "strategy_equity": 1.2407,
-      "buyhold_equity": 1.0576
+      "strategy_equity": 1.3017,
+      "buyhold_equity": 1.1158
     },
     {
       "date": "2026-10-29",
-      "predicted": 1725.697,
+      "predicted": 1711.542,
       "actual": 1565.9,
-      "strategy_equity": 1.1594,
-      "buyhold_equity": 0.9883
+      "strategy_equity": 1.2164,
+      "buyhold_equity": 1.0427
     },
     {
       "date": "2026-10-30",
-      "predicted": 1594.4055,
+      "predicted": 1600.429,
       "actual": 1526.14,
-      "strategy_equity": 1.13,
-      "buyhold_equity": 0.9632
+      "strategy_equity": 1.1856,
+      "buyhold_equity": 1.0162
     },
     {
       "date": "2026-11-02",
-      "predicted": 1564.8182,
+      "predicted": 1557.2502,
       "actual": 1552.14,
-      "strategy_equity": 1.1493,
-      "buyhold_equity": 0.9796
+      "strategy_equity": 1.2058,
+      "buyhold_equity": 1.0335
     },
     {
       "date": "2026-11-03",
-      "predicted": 1597.7282,
+      "predicted": 1598.1954,
       "actual": 1496.3,
-      "strategy_equity": 1.1079,
-      "buyhold_equity": 0.9443
+      "strategy_equity": 1.1624,
+      "buyhold_equity": 0.9963
+    },
+    {
+      "date": "2026-11-04",
+      "predicted": 1565.7637,
+      "actual": 1356.65,
+      "strategy_equity": 1.0539,
+      "buyhold_equity": 0.9033
     }
   ]
 }
