@@ -1,11 +1,11 @@
 {
   "ticker": "MU",
   "model": "XGBoost-extended (RTH+AH+PM)",
-  "trained_at": "2026-11-26T20:31:13.303054Z",
+  "trained_at": "2026-11-27T20:25:23.799613Z",
   "last_close": 629.966,
   "last_date": "2026-11-24",
-  "mu_daily": 0.004048212894715475,
-  "sigma_daily": 0.047853807597127346,
+  "mu_daily": 0.0040706007313380645,
+  "sigma_daily": 0.047901211672398386,
   "feature_cols": [
     "sma_ratio_5",
     "sma_ratio_10",
@@ -24,11 +24,11 @@
     "ah_pm_align",
     "ext_range"
   ],
-  "ext_importance": 0.4743,
+  "ext_importance": 0.4533,
   "metrics": {
-    "mae": 0.04447397914893007,
-    "r2": -0.18432624248978513,
-    "directional_accuracy": 0.5670103092783505
+    "mae": 0.04363403434439677,
+    "r2": -0.15262402040898104,
+    "directional_accuracy": 0.5729166666666666
   },
   "last_ext_features": {
     "ah_return": -0.0009896231757414971,
